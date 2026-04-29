@@ -13,7 +13,8 @@ OBJ_DIR     = objs
 # Archivos fuente (Añadimos el main y tu parte del parsing)
 # He incluido la ruta exacta según tu árbol de directorios
 SRCS        = $(SRC_DIR)/main.cpp \
-              $(SRC_DIR)/config/ConfigParser.cpp
+              $(SRC_DIR)/config/ConfigParser.cpp \
+			  $(SRC_DIR)/config/ServerConfig.cpp
 
 # Transformación de archivos .cpp a .o en la carpeta objs
 OBJS        = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)

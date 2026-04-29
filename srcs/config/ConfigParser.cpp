@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/04/27 16:01:50 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/04/29 16:33:52 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -44,8 +44,164 @@ int    ConfigParser::readFile(std::string path)
     }
     while (getline (MyReadFile, line))
     {
-        std::cout << line << std::endl;
+        std::vector<std::string> tokens_line;
+        tokens_line = splitLine(line);
+        if (!tokens_line.empty())
+            tokens.push_back(tokens_line);
     }
+    /*
+    std::cout << "size --> " << tokens.size() << std::endl;
+    std::cout << "size 14--> " << tokens[14].size() << std::endl;
+    std::cout << "vector --> " << tokens[14][2] << std::endl;
+    */
     MyReadFile.close();
+    
+    return (0);
+}
+
+std::vector<std::string>   ConfigParser::splitLine(std::string line)
+{
+    std::vector<std::string> token_line;
+    std::string  word;
+    line = removeComments(line);
+    line = addSpaces(line);
+    std::stringstream ss(line);
+    while (ss >> word)
+    {
+        token_line.push_back(word);
+    }
+    return token_line;
+}
+
+std::string ConfigParser::addSpaces(std::string line)
+{ 
+    std::string new_line;
+    int i = 0;
+    while(line[i])
+    {
+        switch (line[i])
+        {
+            case ';' :
+                new_line += " ; ";
+                break;
+            case '{' :
+                new_line += " { ";
+                break;
+            case '}':
+                new_line += " } ";
+                break;
+            default:
+                new_line += line[i];
+                break;
+        }
+        i++;
+    }
+    return new_line;
+}
+
+std::string ConfigParser::removeComments(std::string line)
+{
+    line = line.substr(0,line.find('#'));
+    return line;   
+}
+
+int ConfigParser::validateEndLines(std::vector<std::vector<std::string> > tokens)
+{
+    size_t i = 0;
+    while (i < tokens.size())
+    {
+       if(tokens[i][tokens[i].size() - 1] != "{" && tokens[i][tokens[i].size() - 1] != "}" && tokens[i][tokens[i].size() - 1] != ";")
+            return (1);
+    i++;
+    }
+    return (0);
+}
+
+int ConfigParser::validateBrackets(std::vector<std::vector<std::string> > tokens)
+{
+    size_t i = 0;
+    int count_bracket = 0;
+    while (i < tokens.size())
+    {
+        size_t  j = 0;
+        while (j < tokens[i].size())
+        {
+            if(tokens[i][j] == "{")
+                count_bracket++;
+            else if (tokens[i][j] == "}")
+                count_bracket--;
+            if(count_bracket < 0)
+                return -1;
+            j++;
+        }
+        i++;
+    }
+    if (count_bracket != 0)
+        return -1;
+    return (0);
+}
+
+int ConfigParser::parseConfig(std::string path)
+{
+    if (readFile(path) != 0)
+        return (-1);
+    if (validateBrackets(tokens) != 0)
+    {
+        std::cout << "Invalid Brackets" << std::endl;
+        return (-1);
+    }
+    if(validateEndLines(tokens) != 0)
+    {
+        std::cout << "Invalid sintaxis" << std::endl;
+        return (1);
+    }
+    if (fillConfig(tokens) == 1)
+    {
+        std::cout << "Error while filling config" << std::endl;
+        return (1);
+    }
+    return (0);
+}
+
+
+// Fill configuration ///////////
+///////////////////////////////////
+int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
+{
+    size_t i = 0;
+    size_t  j = 0;
+    int port = 0;
+    bool inServer = false;
+    while (i < tokens.size())
+        {
+            while (j < tokens[i].size())
+            {
+                if(tokens[i][j] == "server")
+                {
+                    if (tokens[i][j+1] == "{")
+                    {
+                        std::cout << "Server abierto" << std::endl;
+                        inServer = true;
+                        servers.push_back(ServerConfig());
+                    }
+                    
+                    else
+                        return (1);
+                }
+                else if (tokens[i][j] == "listen")
+                {
+                    if (inServer)
+                    {
+                        port = atoi(tokens[i][j+1].c_str());
+                        std::cout << "port: " << port << std::endl;
+                    }
+                    else
+                        return (1);
+                }
+
+                j++;
+            }
+            i++;
+        }
     return (0);
 }
