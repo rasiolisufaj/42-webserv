@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/04/29 16:33:52 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/01 15:22:54 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -166,21 +166,59 @@ int ConfigParser::parseConfig(std::string path)
 
 // Fill configuration ///////////
 ///////////////////////////////////
+
+int ConfigParser::validate_body_size(std::string size_str)
+{
+    int i = 0;
+    int size = 0;
+    while(size_str[i])
+    {
+        if(isdigit(size_str[i]))
+            i++;
+        else
+            return 1;
+    }
+    size = atoi(size_str.c_str());
+    if (size <= 0)
+        return 1;
+    return 0;
+}
+
+int ConfigParser::validate_port(std::string port_str)
+{
+    int i = 0;
+    int port = 0;
+    while(port_str[i])
+    {
+        if(isdigit(port_str[i]))
+            i++;
+        else
+            return 1;
+    }
+    port = atoi(port_str.c_str());
+    if (port <= 0 || port > 65535)
+        return 1;
+    return 0;
+}
+
 int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
 {
     size_t i = 0;
-    size_t  j = 0;
+   
     int port = 0;
+    size_t size = 0;
     bool inServer = false;
     while (i < tokens.size())
         {
+            size_t  j = 0;
             while (j < tokens[i].size())
             {
+                //std::cout << "Tokens: < " << tokens[i][j] << " > " << i << j << std::endl;
                 if(tokens[i][j] == "server")
                 {
                     if (tokens[i][j+1] == "{")
                     {
-                        std::cout << "Server abierto" << std::endl;
+                       // std::cout << "Server abierto " << i << std::endl;
                         inServer = true;
                         servers.push_back(ServerConfig());
                     }
@@ -192,16 +230,52 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                 {
                     if (inServer)
                     {
+                        if(validate_port(tokens[i][j+1]) != 0)
+                            return 1;
                         port = atoi(tokens[i][j+1].c_str());
-                        std::cout << "port: " << port << std::endl;
+                        servers.back().port = port;
+                        //std::cout << "port: " << port << std::endl;
                     }
                     else
                         return (1);
                 }
-
+                else if (tokens[i][j] == "server_name")
+                {
+                    if (inServer)
+                    {
+                        j++;
+                        while (tokens[i][j] != ";")
+                        {
+                            servers.back().server_names.push_back(tokens[i][j]);
+                            j++;
+                        }
+                    }
+                    else
+                        return (1);
+                }
+                else if (tokens[i][j] == "client_max_body_size")
+                {
+                    if (inServer)
+                    {
+                        if (validate_body_size(tokens[i][j+1]) != 0)
+                            return 1;
+                        size = atoll(tokens[i][j+1].c_str());
+                        servers.back().client_max_body_size = size;
+                    }
+                    else
+                        return (1);
+                }
                 j++;
             }
             i++;
         }
+
+        std::cout << "Tamanio de servers: " << servers.size() << std::endl;
+        std::cout << "Server 1 port: " << servers.at(0).port << std::endl;
+        std::cout << "Servers Name: " << servers.at(0).server_names.size() << std::endl;
+        std::cout << "Server Name 0: " << servers.at(0).server_names.at(0) << std::endl;
+        std::cout << "Server Name 1: " << servers.at(0).server_names.at(1) << std::endl;
+        std::cout << "Server Name 2: " << servers.at(0).server_names.at(2) << std::endl;
+        std::cout << "Size: " << servers.at(0).client_max_body_size << std::endl;
     return (0);
 }

@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:25:56 by lellanos          #+#    #+#             */
-/*   Updated: 2026/04/28 15:34:02 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/01 15:13:10 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -33,6 +33,8 @@ class ConfigParser
         int validateBrackets(std::vector<std::vector<std::string> > tokens);
         int validateEndLines(std::vector<std::vector<std::string> > tokens);
         int fillConfig(std::vector<std::vector<std::string> > tokens);
+        int validate_port(std::string port);
+        int validate_body_size(std::string size_str);
     public:
         std::vector<ServerConfig> servers;
         ConfigParser();
