@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/01 15:22:54 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/01 18:25:48 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -201,28 +201,45 @@ int ConfigParser::validate_port(std::string port_str)
     return 0;
 }
 
+int ConfigParser::validate_error(std::string error_str)
+{
+    int i  = 0;
+    int error = 0;
+    
+    while (error_str[i])
+    {
+        if(isdigit(error_str[i]))
+            i++;
+        else
+            return 1;
+    }
+    error = atoi(error_str.c_str());
+    if (error < 300 || error > 599)
+        return 1;
+    return 0;
+}
+
+
 int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
 {
     size_t i = 0;
    
     int port = 0;
     size_t size = 0;
+    int error = 0;
     bool inServer = false;
     while (i < tokens.size())
         {
             size_t  j = 0;
             while (j < tokens[i].size())
             {
-                //std::cout << "Tokens: < " << tokens[i][j] << " > " << i << j << std::endl;
                 if(tokens[i][j] == "server")
                 {
                     if (tokens[i][j+1] == "{")
                     {
-                       // std::cout << "Server abierto " << i << std::endl;
                         inServer = true;
                         servers.push_back(ServerConfig());
                     }
-                    
                     else
                         return (1);
                 }
@@ -265,6 +282,20 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     else
                         return (1);
                 }
+                else if (tokens[i][j] == "error_page")
+                {
+                    if (inServer)
+                    {
+                        if (validate_error(tokens[i][j+1]) != 0)
+                            return 1;
+                        error = atoi(tokens[i][j+1].c_str());
+                        servers.back().error_pages[error] = tokens[i][j+2];
+                    }
+                    else
+                        return (1);
+                }
+                    if (tokens[i][j] == "}")
+                        inServer = false;
                 j++;
             }
             i++;
@@ -277,5 +308,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
         std::cout << "Server Name 1: " << servers.at(0).server_names.at(1) << std::endl;
         std::cout << "Server Name 2: " << servers.at(0).server_names.at(2) << std::endl;
         std::cout << "Size: " << servers.at(0).client_max_body_size << std::endl;
+       std::cout << "Error: " << servers.at(0).error_pages[404] << std::endl;
+       std::cout << "Error: " << servers.at(0).error_pages[500] << std::endl;
     return (0);
 }
