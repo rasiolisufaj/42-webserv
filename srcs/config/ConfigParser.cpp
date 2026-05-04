@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
+/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/01 18:25:48 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/04 16:49:00 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -157,7 +157,7 @@ int ConfigParser::parseConfig(std::string path)
     }
     if (fillConfig(tokens) == 1)
     {
-        std::cout << "Error while filling config" << std::endl;
+        //std::cout << "Error while filling config" << std::endl;
         return (1);
     }
     return (0);
@@ -219,15 +219,74 @@ int ConfigParser::validate_error(std::string error_str)
     return 0;
 }
 
+int ConfigParser::validate_method(std::string method)
+{
+    if (method == "GET" || method == "POST" || method == "DELETE")
+        return 0;
+    else
+        return 1;
+}
+
+int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, size_t &i, ServerConfig &server)
+{
+    Location new_location;
+    bool inLocation = false;
+    
+    
+    while (i < tokens.size())
+    {
+        size_t j = 0;
+        while (j < tokens[i].size())
+        {
+            std::cout << "Llega: " << tokens[i][j] << std::endl;
+            if (tokens[i][j] == "location")
+            {
+                
+                inLocation = true;
+                new_location.path = tokens[i][1];
+            }
+            
+            else if(inLocation && tokens[i][j] == "allow_methods" && tokens[i].size() > 2)
+            {
+                j++;
+                while (tokens[i][j] != ";")
+                {
+                    if (validate_method(tokens[i][j]) == 0)
+                    {
+                        new_location.allowed_methods.push_back(tokens[i][j]);
+                        j++;
+                    }
+                    else
+                    {
+                        std::cout << "Error with 'Allowed Methods" << std::endl;
+                        return 1;
+                    }
+                }
+            }
+            else if (tokens[i][j] == "}")
+            {
+                inLocation = false;
+                return 0;
+            }
+            else
+                return 1;
+            j++;
+        }
+        i++;
+    }
+    (void)server;
+    return 0;
+}
+
 
 int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
 {
-    size_t i = 0;
-   
+    size_t i = 0;   
     int port = 0;
     size_t size = 0;
     int error = 0;
     bool inServer = false;
+
     while (i < tokens.size())
         {
             size_t  j = 0;
@@ -248,7 +307,10 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     if (inServer)
                     {
                         if(validate_port(tokens[i][j+1]) != 0)
+                        {
+                            std::cout << "Error in line 'listen' " << std::endl;
                             return 1;
+                        }
                         port = atoi(tokens[i][j+1].c_str());
                         servers.back().port = port;
                         //std::cout << "port: " << port << std::endl;
@@ -258,7 +320,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                 }
                 else if (tokens[i][j] == "server_name")
                 {
-                    if (inServer)
+                    if (inServer && tokens[i].size() > 2)
                     {
                         j++;
                         while (tokens[i][j] != ";")
@@ -268,11 +330,14 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         }
                     }
                     else
+                    {
+                        std::cout << "Error in line 'server_name' " << std::endl;
                         return (1);
+                    }
                 }
                 else if (tokens[i][j] == "client_max_body_size")
                 {
-                    if (inServer)
+                    if (inServer && tokens[i].size() > 2)
                     {
                         if (validate_body_size(tokens[i][j+1]) != 0)
                             return 1;
@@ -280,16 +345,35 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         servers.back().client_max_body_size = size;
                     }
                     else
+                    {
+                        std::cout << "Error in line 'client_max_body_size' " << std::endl;
                         return (1);
+                    }
                 }
                 else if (tokens[i][j] == "error_page")
                 {
-                    if (inServer)
+                    //std::cout << "Error Page size: " << tokens[i].size() << std::endl;
+                    if (inServer && tokens[i].size() == 4)
                     {
                         if (validate_error(tokens[i][j+1]) != 0)
                             return 1;
                         error = atoi(tokens[i][j+1].c_str());
                         servers.back().error_pages[error] = tokens[i][j+2];
+                    }
+                    else
+                    {
+                        std::cout << "Error in line 'error_page' " << std::endl;
+                        return (1);
+                    }
+                }
+                else if (tokens[i][j] == "location")
+                {
+                    if (inServer && tokens[i].size() == 3 && tokens[i][j+2] == "{")
+                    {
+                        if (fillLocation(tokens, i, servers.back()) != 0)
+                        {
+                            return 1;
+                        }
                     }
                     else
                         return (1);

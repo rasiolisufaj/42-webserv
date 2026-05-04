@@ -8,12 +8,16 @@
 #include <cstdlib>
 
 struct Location {
-    std::string path;
-    std::string root;
-    std::string index;
-    bool        autoindex;
-    
-    Location() : autoindex(false) {}
+    std::string              path;
+    std::string              root;
+    std::string              index;
+    bool                     autoindex;
+    std::vector<std::string> allowed_methods; 
+    std::string              return_redir;    
+    std::string              cgi_extension;   
+    std::string              cgi_path;        
+
+    Location() : path(""), root(""), index("index.html"), autoindex(false) {}
 };
 
 class ServerConfig {
