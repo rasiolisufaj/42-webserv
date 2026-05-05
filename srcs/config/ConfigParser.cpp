@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/05 16:16:40 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/05 16:39:11 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -298,7 +298,13 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
 
            else if (inLocation && tokens[i][j] == "cgi" && tokens[i].size() == 4)
             {
-                new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
+                if (access(tokens[i][j+2].c_str(), X_OK) != 0)
+                {
+                    std::cerr << "Error with CGI: " << strerror(errno) << " : " << tokens[i][j+2] << std::endl;
+                    return 1;
+                }
+                else
+                    new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
             }
             
             else if (tokens[i][j] == "}")
@@ -446,7 +452,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
         std::cout << "Autoindex : " << servers.at(0).locations.at(0).autoindex << std::endl;
         std::cout << "return: " << servers.at(0).locations.at(0).return_redir << std::endl;
         std::cout << "upload_store: " << servers.at(0).locations.at(0).upload_store << std::endl;
-        std::cout << "Cgi : " << servers.at(0).locations.at(0).cgi[".php"] << std::endl;
+        std::cout << "Cgi : " << servers.at(0).locations.at(0).cgi[".sh"] << std::endl;
          
     return (0);
 }

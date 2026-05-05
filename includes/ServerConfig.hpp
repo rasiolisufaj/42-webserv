@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <cstdlib>
+#include <unistd.h>
 
 struct Location {
     std::string                         path;
