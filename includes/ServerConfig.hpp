@@ -8,14 +8,14 @@
 #include <cstdlib>
 
 struct Location {
-    std::string              path;
-    std::string              root;
-    std::string              index;
-    bool                     autoindex;
-    std::vector<std::string> allowed_methods; 
-    std::string              return_redir;    
-    std::string              cgi_extension;   
-    std::string              cgi_path;        
+    std::string                         path;
+    std::string                         root;
+    std::string                         index;
+    bool                                autoindex;
+    std::vector<std::string>            allowed_methods; 
+    std::string                         return_redir;
+    std::string                         upload_store; 
+    std::map<std::string, std::string>  cgi;
 
     Location() : path(""), root(""), index("index.html"), autoindex(false) {}
 };

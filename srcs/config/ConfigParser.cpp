@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
+/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/04 16:49:00 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/05 16:16:40 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -238,7 +238,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
         size_t j = 0;
         while (j < tokens[i].size())
         {
-            std::cout << "Llega: " << tokens[i][j] << std::endl;
+            
             if (tokens[i][j] == "location")
             {
                 
@@ -263,13 +263,52 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                     }
                 }
             }
+            else if (inLocation && tokens[i][j] == "root" && tokens[i].size() == 3)
+            {
+                new_location.root = tokens[i][j+1];
+            }
+            
+            else if (inLocation && tokens[i][j] == "index" && tokens[i].size() == 3)
+            {
+                new_location.index = tokens[i][j+1];
+            }
+            
+            else if (inLocation && tokens[i][j] == "autoindex" && tokens[i].size() == 3)
+            {
+                if (tokens[i][j+1] == "on")
+                    new_location.autoindex = true;
+                else if (tokens[i][j+1] == "off")
+                    new_location.autoindex = false;
+                else
+                {
+                    std::cout << "Error at location > autoindex " << std::endl;
+                    return 1;
+                }
+            }
+            
+            else if (inLocation && tokens[i][j] == "return" && tokens[i].size() == 3)
+            {
+                new_location.return_redir = tokens[i][j+1];
+            }
+            
+           else if (inLocation && tokens[i][j] == "upload_store" && tokens[i].size() == 3)
+            {
+                new_location.upload_store = tokens[i][j+1];
+            }
+
+           else if (inLocation && tokens[i][j] == "cgi" && tokens[i].size() == 4)
+            {
+                new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
+            }
+            
             else if (tokens[i][j] == "}")
             {
                 inLocation = false;
+                server.locations.push_back(new_location);
                 return 0;
             }
-            else
-                return 1;
+            //else
+                //return 1;
             j++;
         }
         i++;
@@ -313,7 +352,6 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         }
                         port = atoi(tokens[i][j+1].c_str());
                         servers.back().port = port;
-                        //std::cout << "port: " << port << std::endl;
                     }
                     else
                         return (1);
@@ -352,7 +390,6 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                 }
                 else if (tokens[i][j] == "error_page")
                 {
-                    //std::cout << "Error Page size: " << tokens[i].size() << std::endl;
                     if (inServer && tokens[i].size() == 4)
                     {
                         if (validate_error(tokens[i][j+1]) != 0)
@@ -378,21 +415,38 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     else
                         return (1);
                 }
+                
                     if (tokens[i][j] == "}")
+                    {
                         inServer = false;
+                    }
+                //std::cout << "llega: " << tokens[i][j] << std::endl;
                 j++;
             }
+            
             i++;
+            
+           
         }
-
+ 
         std::cout << "Tamanio de servers: " << servers.size() << std::endl;
         std::cout << "Server 1 port: " << servers.at(0).port << std::endl;
-        std::cout << "Servers Name: " << servers.at(0).server_names.size() << std::endl;
         std::cout << "Server Name 0: " << servers.at(0).server_names.at(0) << std::endl;
         std::cout << "Server Name 1: " << servers.at(0).server_names.at(1) << std::endl;
         std::cout << "Server Name 2: " << servers.at(0).server_names.at(2) << std::endl;
-        std::cout << "Size: " << servers.at(0).client_max_body_size << std::endl;
-       std::cout << "Error: " << servers.at(0).error_pages[404] << std::endl;
-       std::cout << "Error: " << servers.at(0).error_pages[500] << std::endl;
+        std::cout << "client Size: " << servers.at(0).client_max_body_size << std::endl;
+        std::cout << "Error page: " << servers.at(0).error_pages[404] << std::endl;
+        std::cout << "Error page: " << servers.at(0).error_pages[500] << std::endl << std::endl;
+        std::cout << "Location path: " << servers.at(0).locations.at(0).path << std::endl;
+        
+        std::cout << "allow_methods: " << servers.at(0).locations.at(0).allowed_methods.at(0) << std::endl;
+        std::cout << "root: " << servers.at(0).locations.at(0).root << std::endl;
+        
+        std::cout << "Index : " << servers.at(0).locations.at(0).index << std::endl;
+        std::cout << "Autoindex : " << servers.at(0).locations.at(0).autoindex << std::endl;
+        std::cout << "return: " << servers.at(0).locations.at(0).return_redir << std::endl;
+        std::cout << "upload_store: " << servers.at(0).locations.at(0).upload_store << std::endl;
+        std::cout << "Cgi : " << servers.at(0).locations.at(0).cgi[".php"] << std::endl;
+         
     return (0);
 }
