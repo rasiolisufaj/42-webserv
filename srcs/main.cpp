@@ -24,6 +24,8 @@ int main(int ac, char **av)
         if (ac != 2)
             throw(std::runtime_error("Enter an argument and try again\n===BYE WEBSERV==="));
         std::cout << "===WebServ is running===\n";
+
+        /*TEST REQUSTLINE PARSING*/
         RequestLine rl;
         rl.parse("GET index.html HTTP/1.1");
     }
