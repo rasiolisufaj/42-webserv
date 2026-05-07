@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
+/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/07 17:09:11 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/07 20:18:50 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -509,52 +509,15 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
 }
 
 
-
-
-
-
-
-
-void ConfigParser::print_location()
+const std::vector<ServerConfig>& ConfigParser::getServers() const
 {
-    
-    std::cout << "Location path: " << servers.at(0).locations.at(0).path << std::endl;
-    std::cout << "allow_methods: " << servers.at(0).locations.at(0).allowed_methods.at(0) << std::endl;
-    std::cout << "root: " << servers.at(0).locations.at(0).root << std::endl;
-    std::cout << "Index : " << servers.at(0).locations.at(0).index << std::endl;
-    std::cout << "Autoindex : " << servers.at(0).locations.at(0).autoindex << std::endl;
-    std::cout << "return code: " << servers.at(0).locations.at(0).return_code << std::endl;
-    std::cout << "return: " << servers.at(0).locations.at(0).return_redir << std::endl;
-    std::cout << "upload_store: " << servers.at(0).locations.at(0).upload_store << std::endl;
-    std::cout << "Cgi : " << servers.at(0).locations.at(0).cgi[".sh"] << std::endl;
-    if ( servers.at(0).locations.at(0).client_max_body_size == (size_t)-1)
-        std::cout << "client_max_body_size : -1 " << std::endl;
-    else
-        std::cout << "client_max_body_size : " << servers.at(0).locations.at(0).client_max_body_size << std::endl;
-    std::cout << std::endl;
+    return servers;
 }
 
 
 
-void ConfigParser::print_servers()
-{
-    size_t i = 0;
 
-    while (i < servers.size())
-    {
-    
-        std::cout << "Servers size: " << servers.size() << std::endl;
-        std::cout << "listen: " << servers.at(i).port << std::endl;
-        std::cout << "server_name: " << servers.at(i).server_names.at(0) << std::endl;
-        std::cout << "server_name: " << servers.at(i).server_names.at(1) << std::endl;
-        std::cout << "server_name: " << servers.at(i).server_names.at(2) << std::endl;
-        std::cout << "client_max_body_size: " << servers.at(0).client_max_body_size << std::endl;
-        std::cout << "error_page: " << servers.at(i).error_pages[404] << std::endl;
-        std::cout << "error_page: " << servers.at(i).error_pages[500] << std::endl << std::endl;
-        
-        //size_t j = 0;
-        
-        std::cout << "Location size:" << servers.at(i).locations.size();
-        i++;
-    }
-}
+
+
+
+
