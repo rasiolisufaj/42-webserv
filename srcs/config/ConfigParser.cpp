@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/05 16:39:11 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/07 10:01:07 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -236,6 +236,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
     while (i < tokens.size())
     {
         size_t j = 0;
+        size_t size = -1;
         while (j < tokens[i].size())
         {
             
@@ -305,6 +306,22 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 }
                 else
                     new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
+            }
+                        
+            else if (tokens[i][j] == "client_max_body_size" )
+            {
+                if (inLocation && tokens[i].size() == 3)
+                {
+                    if (validate_body_size(tokens[i][j+1]) != 0)
+                        return 1;
+                    size = atoll(tokens[i][j+1].c_str());
+                    new_location.client_max_body_size = size;
+                }
+                else
+                {
+                    std::cout << "Error in line 'location > client_max_body_size' " << std::endl;
+                    return (1);
+                }
             }
             
             else if (tokens[i][j] == "}")
@@ -453,6 +470,10 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
         std::cout << "return: " << servers.at(0).locations.at(0).return_redir << std::endl;
         std::cout << "upload_store: " << servers.at(0).locations.at(0).upload_store << std::endl;
         std::cout << "Cgi : " << servers.at(0).locations.at(0).cgi[".sh"] << std::endl;
-         
-    return (0);
+        if ( servers.at(0).locations.at(0).client_max_body_size == (size_t)-1)
+            std::cout << "client_max_body_size : -1 " << std::endl;
+        else
+            std::cout << "client_max_body_size : " << servers.at(0).locations.at(0).client_max_body_size << std::endl;
+
+        return (0);
 }

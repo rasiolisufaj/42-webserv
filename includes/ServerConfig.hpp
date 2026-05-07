@@ -17,8 +17,9 @@ struct Location {
     std::string                         return_redir;
     std::string                         upload_store; 
     std::map<std::string, std::string>  cgi;
+    size_t                              client_max_body_size;
 
-    Location() : path(""), root(""), index("index.html"), autoindex(false) {}
+    Location() : path(""), root(""), index("index.html"), autoindex(false), client_max_body_size((size_t)-1) {}
 };
 
 class ServerConfig {
