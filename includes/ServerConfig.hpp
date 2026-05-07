@@ -13,13 +13,24 @@ struct Location {
     std::string                         root;
     std::string                         index;
     bool                                autoindex;
-    std::vector<std::string>            allowed_methods; 
+    std::vector<std::string>            allowed_methods;
+    int                                 return_code; 
     std::string                         return_redir;
     std::string                         upload_store; 
     std::map<std::string, std::string>  cgi;
     size_t                              client_max_body_size;
 
-    Location() : path(""), root(""), index("index.html"), autoindex(false), client_max_body_size((size_t)-1) {}
+    Location() : 
+    path(""), 
+    root(""), 
+    index("index.html"), 
+    autoindex(false), 
+    return_code(-1),
+    return_redir(""),
+    client_max_body_size((size_t)-1)
+    {
+        allowed_methods.push_back("GET");
+    }
 };
 
 class ServerConfig {

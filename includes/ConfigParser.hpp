@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:25:56 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/05 15:55:54 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/07 17:04:06 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -38,12 +38,15 @@ class ConfigParser
         int validate_error(std::string size_str);
         int fillLocation(std::vector<std::vector<std::string> > &tokens, size_t &i, ServerConfig &server);
         int validate_method(std::string method);
-        void print_servers(ServerConfig server);
+        int validate_return_code(std::string return_code);
+
     public:
         std::vector<ServerConfig> servers;
         ConfigParser();
         ~ConfigParser();
         int parseConfig(std::string path);
+        void print_servers();
+        void print_location();
 };
 
 #endif

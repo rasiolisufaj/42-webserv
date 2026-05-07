@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/07 10:01:07 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/07 17:09:11 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -227,22 +227,39 @@ int ConfigParser::validate_method(std::string method)
         return 1;
 }
 
+int ConfigParser::validate_return_code(std::string return_code)
+{
+    int i  = 0;
+    int code = 0;
+    
+    while (return_code[i])
+    {
+        if(isdigit(return_code[i]))
+            i++;
+        else
+            return 1;
+    }
+    code = atoi(return_code.c_str());
+    if (code < 200 || code > 599)
+        return 1;
+    return 0;
+}
+
 int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, size_t &i, ServerConfig &server)
 {
     Location new_location;
     bool inLocation = false;
     
-    
     while (i < tokens.size())
     {
         size_t j = 0;
         size_t size = -1;
+        int return_code = 0;
         while (j < tokens[i].size())
         {
             
             if (tokens[i][j] == "location")
             {
-                
                 inLocation = true;
                 new_location.path = tokens[i][1];
             }
@@ -250,16 +267,22 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
             else if(inLocation && tokens[i][j] == "allow_methods" && tokens[i].size() > 2)
             {
                 j++;
+                bool flag = true;
                 while (tokens[i][j] != ";")
                 {
                     if (validate_method(tokens[i][j]) == 0)
                     {
+                        if(flag)
+                        {
+                            new_location.allowed_methods.clear();
+                            flag = false;
+                        }
                         new_location.allowed_methods.push_back(tokens[i][j]);
                         j++;
                     }
                     else
                     {
-                        std::cout << "Error with 'Allowed Methods" << std::endl;
+                        std::cout << "Error with 'Allowed Methods' " << std::endl;
                         return 1;
                     }
                 }
@@ -287,9 +310,41 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 }
             }
             
-            else if (inLocation && tokens[i][j] == "return" && tokens[i].size() == 3)
+            else if (inLocation && tokens[i][j] == "return" && tokens[i].size() > 2)
             {
-                new_location.return_redir = tokens[i][j+1];
+                if(validate_return_code(tokens[i][j+1]) != 0)
+                {
+                    std::cout << "Error at location > return " << std::endl;
+                    return 1;
+                }
+                else
+                {
+                    return_code = atoi(tokens[i][j+1].c_str());
+                    if ((return_code >= 300 && return_code <= 399))
+                    {
+                        if(tokens[i].size() == 4)
+                        {
+                            new_location.return_code = return_code;
+                            new_location.return_redir = tokens[i][j+2];
+                        }
+                        else
+                        {
+                            std::cout << "Error at location > return " << std::endl;
+                            return 1;
+                        }
+                    }
+                    else
+                    {
+                        if(tokens[i].size() == 4)
+                        {
+                            new_location.return_code = return_code;
+                            new_location.return_redir = tokens[i][j+2];
+                        }
+                        else
+                            new_location.return_code = return_code;
+                    }
+                    
+                }
             }
             
            else if (inLocation && tokens[i][j] == "upload_store" && tokens[i].size() == 3)
@@ -308,9 +363,9 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                     new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
             }
                         
-            else if (tokens[i][j] == "client_max_body_size" )
+            else if (inLocation && tokens[i][j] == "client_max_body_size" )
             {
-                if (inLocation && tokens[i].size() == 3)
+                if (tokens[i].size() == 3)
                 {
                     if (validate_body_size(tokens[i][j+1]) != 0)
                         return 1;
@@ -324,19 +379,18 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 }
             }
             
-            else if (tokens[i][j] == "}")
+            else if (inLocation && tokens[i][j] == "}")
             {
                 inLocation = false;
+                if (new_location.client_max_body_size == (size_t)-1)
+                    new_location.client_max_body_size = server.client_max_body_size;
                 server.locations.push_back(new_location);
                 return 0;
             }
-            //else
-                //return 1;
-            j++;
+        j++;
         }
-        i++;
+    i++;
     }
-    (void)server;
     return 0;
 }
 
@@ -439,11 +493,10 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         return (1);
                 }
                 
-                    if (tokens[i][j] == "}")
-                    {
-                        inServer = false;
-                    }
-                //std::cout << "llega: " << tokens[i][j] << std::endl;
+                else if (tokens[i][j] == "}")
+                {
+                    inServer = false;
+                }
                 j++;
             }
             
@@ -451,29 +504,57 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
             
            
         }
- 
-        std::cout << "Tamanio de servers: " << servers.size() << std::endl;
-        std::cout << "Server 1 port: " << servers.at(0).port << std::endl;
-        std::cout << "Server Name 0: " << servers.at(0).server_names.at(0) << std::endl;
-        std::cout << "Server Name 1: " << servers.at(0).server_names.at(1) << std::endl;
-        std::cout << "Server Name 2: " << servers.at(0).server_names.at(2) << std::endl;
-        std::cout << "client Size: " << servers.at(0).client_max_body_size << std::endl;
-        std::cout << "Error page: " << servers.at(0).error_pages[404] << std::endl;
-        std::cout << "Error page: " << servers.at(0).error_pages[500] << std::endl << std::endl;
-        std::cout << "Location path: " << servers.at(0).locations.at(0).path << std::endl;
-        
-        std::cout << "allow_methods: " << servers.at(0).locations.at(0).allowed_methods.at(0) << std::endl;
-        std::cout << "root: " << servers.at(0).locations.at(0).root << std::endl;
-        
-        std::cout << "Index : " << servers.at(0).locations.at(0).index << std::endl;
-        std::cout << "Autoindex : " << servers.at(0).locations.at(0).autoindex << std::endl;
-        std::cout << "return: " << servers.at(0).locations.at(0).return_redir << std::endl;
-        std::cout << "upload_store: " << servers.at(0).locations.at(0).upload_store << std::endl;
-        std::cout << "Cgi : " << servers.at(0).locations.at(0).cgi[".sh"] << std::endl;
-        if ( servers.at(0).locations.at(0).client_max_body_size == (size_t)-1)
-            std::cout << "client_max_body_size : -1 " << std::endl;
-        else
-            std::cout << "client_max_body_size : " << servers.at(0).locations.at(0).client_max_body_size << std::endl;
-
+                
         return (0);
+}
+
+
+
+
+
+
+
+
+void ConfigParser::print_location()
+{
+    
+    std::cout << "Location path: " << servers.at(0).locations.at(0).path << std::endl;
+    std::cout << "allow_methods: " << servers.at(0).locations.at(0).allowed_methods.at(0) << std::endl;
+    std::cout << "root: " << servers.at(0).locations.at(0).root << std::endl;
+    std::cout << "Index : " << servers.at(0).locations.at(0).index << std::endl;
+    std::cout << "Autoindex : " << servers.at(0).locations.at(0).autoindex << std::endl;
+    std::cout << "return code: " << servers.at(0).locations.at(0).return_code << std::endl;
+    std::cout << "return: " << servers.at(0).locations.at(0).return_redir << std::endl;
+    std::cout << "upload_store: " << servers.at(0).locations.at(0).upload_store << std::endl;
+    std::cout << "Cgi : " << servers.at(0).locations.at(0).cgi[".sh"] << std::endl;
+    if ( servers.at(0).locations.at(0).client_max_body_size == (size_t)-1)
+        std::cout << "client_max_body_size : -1 " << std::endl;
+    else
+        std::cout << "client_max_body_size : " << servers.at(0).locations.at(0).client_max_body_size << std::endl;
+    std::cout << std::endl;
+}
+
+
+
+void ConfigParser::print_servers()
+{
+    size_t i = 0;
+
+    while (i < servers.size())
+    {
+    
+        std::cout << "Servers size: " << servers.size() << std::endl;
+        std::cout << "listen: " << servers.at(i).port << std::endl;
+        std::cout << "server_name: " << servers.at(i).server_names.at(0) << std::endl;
+        std::cout << "server_name: " << servers.at(i).server_names.at(1) << std::endl;
+        std::cout << "server_name: " << servers.at(i).server_names.at(2) << std::endl;
+        std::cout << "client_max_body_size: " << servers.at(0).client_max_body_size << std::endl;
+        std::cout << "error_page: " << servers.at(i).error_pages[404] << std::endl;
+        std::cout << "error_page: " << servers.at(i).error_pages[500] << std::endl << std::endl;
+        
+        //size_t j = 0;
+        
+        std::cout << "Location size:" << servers.at(i).locations.size();
+        i++;
+    }
 }
