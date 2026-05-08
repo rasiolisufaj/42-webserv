@@ -46,6 +46,7 @@ static std::string trim_lws(const std::string &s)
 }
 
 // Replace all SP/HT by one SP (Exemple: "curl     8.11.1" => "curl 8.11.1")
+// PARSING CHOICE (can modify value)
 static std::string normalize_lws_inside(const std::string &s)
 {
     std::string result;
@@ -120,6 +121,18 @@ static bool is_separator(char c)
     return (false);
 }
 
+static bool is_token_char(char c)
+{
+    unsigned char uc;
+
+    uc = static_cast<unsigned char>(c);
+    if (uc > 127)
+        return (false);
+    if (is_ctl(c) || is_separator(c))
+        return (false);
+    return (true);
+}
+
 static bool is_valid_header_name(const std::string &name)
 {
     size_t i;
@@ -130,7 +143,7 @@ static bool is_valid_header_name(const std::string &name)
     i = 0;
     while (i < name.size())
     {
-        if (is_ctl(name[i]) || is_separator(name[i]))
+        if (!is_token_char(name[i]))
             return (false);
         i++;
     }
@@ -161,6 +174,7 @@ void Headers::parseLine(const std::string &line)
 
     // stock in the map(_fields)
     // if two host or content-length =>error  | else if more same other header => header : value1, value2...
+    // PARSING CHOICE headers duplicate!
     if (_fields.find(key) != _fields.end())
     {
         if (key == "host" || key == "content-length")
@@ -171,21 +185,58 @@ void Headers::parseLine(const std::string &line)
         _fields[key] = value;
 }
 
-bool Headers::hasHeader(const std::string &name) const{
-    
-    std::map<std::string, std::string>::iterator it;
-    it = _fields.find(name);
-    if (it != _fields.end())
+
+//utils
+bool Headers::hasHeader(const std::string &name) const { return (_fields.find(to_lower_ascii(name)) != _fields.end()); }
+
+std::string Headers::getHeader(const std::string &name) const
+{
+    std::map<std::string, std::string>::const_iterator it;
+    std::string key;
+
+    key = to_lower_ascii(name);
+    it = _fields.find(key);
+    if (it == _fields.end())
+        throw(std::runtime_error(" getHeader(): Header not find"));
+    return (it->second);
+}
+
+size_t Headers::getContentLength() const
+{
+    std::string value;
+    size_t      i;
+    size_t      result;
+
+    if (!hasHeader("content-length"))
+        return (0);
+
+    value = getHeader("content-length");
+    if (value.empty())
+        throw(std::runtime_error("400 Bad Request: invalid Content-Length"));
+
+    result = 0;
+    i = 0;
+    while (i < value.size())
+    {
+        if (value[i] < '0' || value[i] > '9')
+            throw(std::runtime_error("400 Bad Request: invalid Content-Length"));
+
+        result = result * 10 + (value[i] - '0');
+        i++;
+    }
+    return (result);
+}
+
+bool Headers::wantsClose() const
+{
+    std::string value;
+
+    if (!hasHeader("connection"))
         return (false);
-    return (true);
+
+    value = to_lower_ascii(getHeader("connection"));
+    if (value == "close")
+        return (true);
+
+    return (false);
 }
-
-
-
-std::string Headers::getHeader(const std::string &name) const{
-
-}
-
-
-size_t getContentLength() const;
-bool wantsClose() const;

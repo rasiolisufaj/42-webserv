@@ -11,6 +11,7 @@
 /* ************************************************************************** */
 
 #include "./http/RequestLine.hpp"
+#include "./http/Headers.hpp"
 #include <stdexcept>
 #include <iostream>
 #include <cstdlib>
@@ -27,7 +28,13 @@ int main(int ac, char **av)
 
         /*TEST REQUSTLINE PARSING*/
         RequestLine rl;
-        rl.parse("GET index.html HTTP/1.1");
+        rl.parse("GET /index.html HTTP/1.1"); //valide
+        //rl.parse("GET index.html HTTP/1.1"); //invalide
+
+        /*TEST REQUSTLINE PARSING*/
+        Headers hd;
+        hd.parseLine("Host: api.interactivtrading.com"); //valide
+        //hd.parseLine("Ho st: api.interactivtrading.com"); //invalide
     }
     catch (std::runtime_error &e)
     {

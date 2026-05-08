@@ -25,7 +25,8 @@ INCLUDES	= -I.
 #Src#
 #####
 SRC			= 	main \
-				http/RequestLine
+				http/RequestLine \
+				http/Headers
 SRCS		= $(addprefix $(SRCDIR)/,$(addsuffix .cpp,$(SRC)))
 OBJ			= $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
