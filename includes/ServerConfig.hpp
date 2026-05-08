@@ -43,7 +43,7 @@ public:
     std::vector<Location>       locations;
     ServerConfig();
     ~ServerConfig();
-    void print_location();
+    void print_location(const Location& loc) const; 
     void print_servers() const;
 };
 
