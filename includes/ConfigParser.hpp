@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.hpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
+/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:25:56 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/07 20:19:16 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/08 18:11:54 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -39,6 +39,8 @@ class ConfigParser
         int fillLocation(std::vector<std::vector<std::string> > &tokens, size_t &i, ServerConfig &server);
         int validate_method(std::string method);
         int validate_return_code(std::string return_code);
+        int validate_extension(std::string extension);
+        static void logError(const std::string& message, const std::string& detail = "");
         std::vector<ServerConfig> servers;
 
     public:

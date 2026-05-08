@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
+/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/07 20:18:50 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/08 19:03:50 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -26,20 +26,20 @@ int    ConfigParser::readFile(std::string path)
     {
         if(S_ISDIR(status.st_mode))
         {
-            std::cout << "Is a directory: " << path << std::endl;
+            logError("Is a directory", path);
             return (1);
         }
     }
     else
     {
-        std::cout << "Cannot open: " << path << ": " << strerror(errno) << std::endl;
+        logError("Cannot open file", path + " > " + strerror(errno));
         return (1);
     }
     
     std::ifstream MyReadFile(path.c_str());
     if (!MyReadFile.is_open())
     {
-        std::cout << "Cannot open: " << path << ": " << strerror(errno) << std::endl;
+        logError("Cannot open file", path + " > " + strerror(errno));
         return (1);
     }
     while (getline (MyReadFile, line))
@@ -49,13 +49,8 @@ int    ConfigParser::readFile(std::string path)
         if (!tokens_line.empty())
             tokens.push_back(tokens_line);
     }
-    /*
-    std::cout << "size --> " << tokens.size() << std::endl;
-    std::cout << "size 14--> " << tokens[14].size() << std::endl;
-    std::cout << "vector --> " << tokens[14][2] << std::endl;
-    */
+
     MyReadFile.close();
-    
     return (0);
 }
 
@@ -147,25 +142,21 @@ int ConfigParser::parseConfig(std::string path)
         return (-1);
     if (validateBrackets(tokens) != 0)
     {
-        std::cout << "Invalid Brackets" << std::endl;
+        logError("Invalid Brackets");
         return (-1);
     }
     if(validateEndLines(tokens) != 0)
     {
-        std::cout << "Invalid sintaxis" << std::endl;
+        logError("Missing end line '{ } or ;'");
         return (1);
     }
     if (fillConfig(tokens) == 1)
     {
-        //std::cout << "Error while filling config" << std::endl;
         return (1);
     }
     return (0);
 }
 
-
-// Fill configuration ///////////
-///////////////////////////////////
 
 int ConfigParser::validate_body_size(std::string size_str)
 {
@@ -245,6 +236,13 @@ int ConfigParser::validate_return_code(std::string return_code)
     return 0;
 }
 
+int ConfigParser::validate_extension(std::string extension)
+{
+    if (extension[0] != '.' || extension.size() < 2)
+            return 1;
+    return 0;
+}
+
 int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, size_t &i, ServerConfig &server)
 {
     Location new_location;
@@ -282,7 +280,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                     }
                     else
                     {
-                        std::cout << "Error with 'Allowed Methods' " << std::endl;
+                        logError("Invalid allowed methods", tokens[i][j]);
                         return 1;
                     }
                 }
@@ -305,7 +303,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                     new_location.autoindex = false;
                 else
                 {
-                    std::cout << "Error at location > autoindex " << std::endl;
+                    logError("Invalid autoindex", tokens[i][j+1]);
                     return 1;
                 }
             }
@@ -314,7 +312,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
             {
                 if(validate_return_code(tokens[i][j+1]) != 0)
                 {
-                    std::cout << "Error at location > return " << std::endl;
+                    logError("Invalid return", tokens[i][j+1]);
                     return 1;
                 }
                 else
@@ -329,7 +327,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                         }
                         else
                         {
-                            std::cout << "Error at location > return " << std::endl;
+                            logError("Invalid return, missing url", tokens[i][j+1]);
                             return 1;
                         }
                     }
@@ -342,8 +340,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                         }
                         else
                             new_location.return_code = return_code;
-                    }
-                    
+                    }        
                 }
             }
             
@@ -354,13 +351,21 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
 
            else if (inLocation && tokens[i][j] == "cgi" && tokens[i].size() == 4)
             {
-                if (access(tokens[i][j+2].c_str(), X_OK) != 0)
+                struct stat s;
+                if (stat(tokens[i][j+2].c_str(), &s) == 0) 
                 {
-                    std::cerr << "Error with CGI: " << strerror(errno) << " : " << tokens[i][j+2] << std::endl;
+                    if (s.st_mode & S_IFDIR) 
+                    {
+                        logError("CGI path is a directory", tokens[i][j+2]);
+                        return 1;
+                    }
+                }
+                if (validate_extension(tokens[i][j+1]) != 0)
+                {
+                    logError("CGI extension", tokens[i][j+1]);
                     return 1;
                 }
-                else
-                    new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
+                new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
             }
                         
             else if (inLocation && tokens[i][j] == "client_max_body_size" )
@@ -368,13 +373,16 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 if (tokens[i].size() == 3)
                 {
                     if (validate_body_size(tokens[i][j+1]) != 0)
+                    {
+                        logError("Incorrect client_max_body_size", tokens[i][j+1]);
                         return 1;
+                    }
                     size = atoll(tokens[i][j+1].c_str());
                     new_location.client_max_body_size = size;
                 }
                 else
                 {
-                    std::cout << "Error in line 'location > client_max_body_size' " << std::endl;
+                    logError("Incorrect client_max_body_size", tokens[i][j+1]);
                     return (1);
                 }
             }
@@ -394,7 +402,6 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
     return 0;
 }
 
-
 int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
 {
     size_t i = 0;   
@@ -408,31 +415,39 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
             size_t  j = 0;
             while (j < tokens[i].size())
             {
-                if(tokens[i][j] == "server")
+                if(tokens[i][j] == "server" )
                 {
-                    if (tokens[i][j+1] == "{")
+                    if (tokens[i][j+1] == "{" && tokens[i].size() == 2)
                     {
                         inServer = true;
                         servers.push_back(ServerConfig());
                     }
                     else
+                    {
+                        logError("Invalid server", tokens[i][j+1]);
                         return (1);
+                    }
                 }
+             
                 else if (tokens[i][j] == "listen")
                 {
                     if (inServer)
                     {
                         if(validate_port(tokens[i][j+1]) != 0)
                         {
-                            std::cout << "Error in line 'listen' " << std::endl;
+                            logError("Invalid port", tokens[i][j+1]);
                             return 1;
                         }
                         port = atoi(tokens[i][j+1].c_str());
                         servers.back().port = port;
                     }
                     else
+                    {
+                        logError("Invalid port", tokens[i][j+1]);
                         return (1);
+                    }
                 }
+             
                 else if (tokens[i][j] == "server_name")
                 {
                     if (inServer && tokens[i].size() > 2)
@@ -446,51 +461,65 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     }
                     else
                     {
-                        std::cout << "Error in line 'server_name' " << std::endl;
+                        logError("Invalid server_name");
                         return (1);
                     }
                 }
+             
                 else if (tokens[i][j] == "client_max_body_size")
                 {
                     if (inServer && tokens[i].size() > 2)
                     {
                         if (validate_body_size(tokens[i][j+1]) != 0)
+                        {
+                            logError("Invalid server client_max_body_size", tokens[i][j+1]);
                             return 1;
+                        }
                         size = atoll(tokens[i][j+1].c_str());
                         servers.back().client_max_body_size = size;
                     }
                     else
                     {
-                        std::cout << "Error in line 'client_max_body_size' " << std::endl;
+                        logError("Invalid server client_max_body_size", tokens[i][j+1]);
                         return (1);
                     }
                 }
+             
                 else if (tokens[i][j] == "error_page")
                 {
                     if (inServer && tokens[i].size() == 4)
                     {
                         if (validate_error(tokens[i][j+1]) != 0)
+                        {
+                            logError("Invalid server error_page", tokens[i][j+1]);
                             return 1;
+                        }
                         error = atoi(tokens[i][j+1].c_str());
                         servers.back().error_pages[error] = tokens[i][j+2];
                     }
                     else
                     {
-                        std::cout << "Error in line 'error_page' " << std::endl;
+                        logError("Invalid server error_page", tokens[i][j+1]);
                         return (1);
                     }
                 }
+             
                 else if (tokens[i][j] == "location")
                 {
                     if (inServer && tokens[i].size() == 3 && tokens[i][j+2] == "{")
                     {
                         if (fillLocation(tokens, i, servers.back()) != 0)
                         {
+                            logError("Invalid location");
                             return 1;
                         }
                     }
                     else
+                    {
+                        logError("Invalid location");
                         return (1);
+                    }
+                        
                 }
                 
                 else if (tokens[i][j] == "}")
@@ -499,12 +528,8 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                 }
                 j++;
             }
-            
-            i++;
-            
-           
+            i++;  
         }
-                
         return (0);
 }
 
@@ -514,8 +539,15 @@ const std::vector<ServerConfig>& ConfigParser::getServers() const
     return servers;
 }
 
-
-
+void ConfigParser::logError(const std::string& message, const std::string& detail) 
+{
+    std::cerr << "ERROR : " << message;
+        if (!detail.empty()) 
+        {
+            std::cerr << " (" << detail << ")" ;
+        }
+    std::cerr << std::endl;
+}
 
 
 
