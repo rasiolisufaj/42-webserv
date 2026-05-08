@@ -16,8 +16,12 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
-// "> GET /index.html HTTP/1.1"
 
+//
+// > GET /index.html HTTP/1.1 (request line WITHOUT the final CRLF)
+//
+
+//split line into token and put into a vector 
 static std::vector<std::string> split_by_space(const std::string &line)
 {
     std::vector<std::string> tokens;
@@ -41,6 +45,7 @@ static std::vector<std::string> split_by_space(const std::string &line)
     return (tokens);
 }
 
+//support method
 static bool check_method(const std::string &method)
 {
     // TODO: add rules if other method add to be supported
@@ -53,6 +58,7 @@ static bool check_method(const std::string &method)
     return (false);
 }
 
+//store token into RequestLine class
 void RequestLine::parse(const std::string &line)
 {
     std::vector<std::string> tokens;
@@ -71,20 +77,14 @@ void RequestLine::parse(const std::string &line)
     if (_version != "HTTP/1.1" && _version != "HTTP/1.0")
         throw (std::runtime_error("505 HTTP Version Not Supported"));
      
-    // TODO: URI absolue: (GET) >>>http://example.com/index.html<<< (HTTP/1.1)
+    // TODO: URI absolue: http://example.com/index.html
+    //> GET http://example.com/index.html HTTP/1.1 (request line with absolue URI)
     if (_target.empty() || _target[0] != '/')
         throw (std::runtime_error("400 Bad Request: invalid target"));
     
 }
 
-    const std::string& RequestLine::method() const{
-        return (_method);
-    }
-
-    const std::string& RequestLine::target() const{
-        return (_target);
-    }
-
-    const std::string& RequestLine::version() const{
-        return (_version);
-    }
+//getters
+const std::string& RequestLine::method() const{ return (_method); }
+const std::string& RequestLine::target() const{ return (_target); }
+const std::string& RequestLine::version() const{ return (_version); }
