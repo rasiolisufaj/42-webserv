@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/08 19:03:50 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/10 15:11:37 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -175,17 +175,25 @@ int ConfigParser::validate_body_size(std::string size_str)
     return 0;
 }
 
-int ConfigParser::validate_port(std::string port_str)
-{
+ int ConfigParser::validate_digits(std::string number_str)
+ {
     int i = 0;
-    int port = 0;
-    while(port_str[i])
+    while(number_str[i])
     {
-        if(isdigit(port_str[i]))
+        if(isdigit(number_str[i]))
             i++;
         else
             return 1;
     }
+    return 0;
+ }
+
+int ConfigParser::validate_port(std::string port_str)
+{
+    int port = 0;
+    
+    if(validate_digits(port_str))
+        return 1;
     port = atoi(port_str.c_str());
     if (port <= 0 || port > 65535)
         return 1;
@@ -194,16 +202,10 @@ int ConfigParser::validate_port(std::string port_str)
 
 int ConfigParser::validate_error(std::string error_str)
 {
-    int i  = 0;
     int error = 0;
     
-    while (error_str[i])
-    {
-        if(isdigit(error_str[i]))
-            i++;
-        else
-            return 1;
-    }
+    if(validate_digits(error_str))
+        return 1;
     error = atoi(error_str.c_str());
     if (error < 300 || error > 599)
         return 1;
@@ -220,16 +222,11 @@ int ConfigParser::validate_method(std::string method)
 
 int ConfigParser::validate_return_code(std::string return_code)
 {
-    int i  = 0;
     int code = 0;
     
-    while (return_code[i])
-    {
-        if(isdigit(return_code[i]))
-            i++;
-        else
-            return 1;
-    }
+    if(validate_digits(return_code))
+        return 1;
+        
     code = atoi(return_code.c_str());
     if (code < 200 || code > 599)
         return 1;
@@ -240,6 +237,36 @@ int ConfigParser::validate_extension(std::string extension)
 {
     if (extension[0] != '.' || extension.size() < 2)
             return 1;
+    return 0;
+}
+
+int ConfigParser::validate_segment(std::string segment)
+{
+    int value = -1;
+    if (segment == "")
+        return 1;
+    if(validate_digits(segment))
+        return 1;
+    value = atoi(segment.c_str());
+    if (value < 0 || value > 255)
+        return 1;
+    return 0;
+}
+
+int ConfigParser::validate_host(std::string host_str)
+{
+    std::string segment;
+    
+    int count_dots = std::count(host_str.begin(), host_str.end(), '.');
+    if (count_dots != 3)
+        return 1;
+    
+    std::stringstream ss(host_str);
+    while(getline(ss, segment, '.'))
+    {
+        if (validate_segment(segment))
+            return 1;
+    }
     return 0;
 }
 
@@ -433,13 +460,32 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                 {
                     if (inServer)
                     {
-                        if(validate_port(tokens[i][j+1]) != 0)
+                        size_t pos = tokens[i][j+1].find(":");
+                        if (pos == std::string::npos)
                         {
-                            logError("Invalid port", tokens[i][j+1]);
-                            return 1;
+                            if(validate_port(tokens[i][j+1]) != 0)
+                            {
+                                logError("Invalid port", tokens[i][j+1]);
+                                return 1;
+                            }
+                            port = atoi(tokens[i][j+1].c_str());
+                            servers.back().port = port;
                         }
-                        port = atoi(tokens[i][j+1].c_str());
-                        servers.back().port = port;
+                        else
+                        {
+                            std::string host_str = "";
+                            std::string port_str = "";
+                            host_str = tokens[i][j+1].substr(0,pos);
+                            port_str = tokens[i][j+1].substr(pos+1);
+                            if (validate_port(port_str) || validate_host(host_str))
+                            {
+                                logError("Invalid port", tokens[i][j+1]);
+                                return 1;
+                            }
+                            port = atoi(port_str.c_str());
+                            servers.back().host = host_str;
+                            servers.back().port = port;
+                        }
                     }
                     else
                     {

@@ -6,7 +6,7 @@
 /*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:25:56 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/08 18:11:54 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/10 15:01:49 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,6 +21,7 @@
 #include <sstream>
 #include <vector>
 #include "ServerConfig.hpp"
+#include <algorithm>
 
 class ConfigParser
 {
@@ -40,6 +41,9 @@ class ConfigParser
         int validate_method(std::string method);
         int validate_return_code(std::string return_code);
         int validate_extension(std::string extension);
+        int validate_host(std::string host_str);
+        int validate_segment(std::string segment);
+        int validate_digits(std::string number_str);
         static void logError(const std::string& message, const std::string& detail = "");
         std::vector<ServerConfig> servers;
 
