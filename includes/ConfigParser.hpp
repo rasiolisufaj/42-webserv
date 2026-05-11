@@ -3,19 +3,19 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.hpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
+/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:25:56 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/10 15:01:49 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/11 09:00:33 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #ifndef ConfigParser_hpp
 #define ConfigParser_hpp
 
+#include <iostream>
 #include <fstream>
 #include <string>
-#include <iostream>
 #include <cstring>
 #include <sys/stat.h>
 #include <sstream>

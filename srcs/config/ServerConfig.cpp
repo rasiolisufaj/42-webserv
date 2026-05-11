@@ -1,4 +1,5 @@
 #include "ServerConfig.hpp"
+#include <iostream>
 
 ServerConfig::ServerConfig() {
     port = 8080;         
