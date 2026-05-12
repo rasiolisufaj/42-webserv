@@ -5,6 +5,7 @@ ServerConfig::ServerConfig() {
     port = 8080;         
     host = "0.0.0.0";
     client_max_body_size = 1000000;
+    client_max_header_size = 8192;
     upload_store = "";
 }
 
@@ -25,6 +26,7 @@ void ServerConfig::print_servers() const
     }
     std::cout <<  std::endl;
     std::cout << "client_max_body_size: " << this->client_max_body_size << std::endl;
+    std::cout << "client_max_header_size: " << this->client_max_header_size << std::endl;
     for (std::map<int, std::string>::const_iterator it = error_pages.begin(); it != error_pages.end(); ++it) 
     {
     std::cout << "error_page : " << it->first << " " << it->second << std::endl;

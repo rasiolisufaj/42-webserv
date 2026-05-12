@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/12 13:25:20 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/12 13:49:32 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -160,8 +160,10 @@ int ConfigParser::parseConfig(std::string path)
 
 int ConfigParser::validate_body_size(std::string size_str)
 {
-    int i = 0;
-    int size = 0;
+    size_t i = 0;
+    size_t size = 0;
+    if (size_str.empty())
+        return 1;
     while(size_str[i])
     {
         if(isdigit(size_str[i]))
@@ -169,7 +171,7 @@ int ConfigParser::validate_body_size(std::string size_str)
         else
             return 1;
     }
-    size = atoi(size_str.c_str());
+    size = atoll(size_str.c_str());
     if (size <= 0)
         return 1;
     return 0;
@@ -534,7 +536,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
              
                 else if (tokens[i][j] == "client_max_body_size")
                 {
-                    if (inServer && tokens[i].size() > 2)
+                    if (inServer && tokens[i].size() == 3)
                     {
                         if (validate_body_size(tokens[i][j+1]) != 0)
                         {
@@ -550,7 +552,26 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         return (1);
                     }
                 }
-             
+
+                else if (tokens[i][j] == "client_max_header_size")
+                {
+                    if (inServer && tokens[i].size() == 3)
+                    {
+                        if (validate_body_size(tokens[i][j+1]) != 0)
+                        {
+                            logError("Invalid server client_max_header_size", tokens[i][j+1]);
+                            return 1;
+                        }
+                        size = atoll(tokens[i][j+1].c_str());
+                        servers.back().client_max_header_size = size;
+                    }
+                    else
+                    {
+                        logError("Invalid server client_max_header_size", tokens[i][j+1]);
+                        return (1);
+                    }
+                }
+                
                 else if (tokens[i][j] == "error_page")
                 {
                     if (inServer && tokens[i].size() == 4)
