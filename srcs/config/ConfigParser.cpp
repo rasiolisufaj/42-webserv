@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
+/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/10 15:11:37 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/12 11:38:50 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -373,7 +373,24 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
             
            else if (inLocation && tokens[i][j] == "upload_store" && tokens[i].size() == 3)
             {
-                new_location.upload_store = tokens[i][j+1];
+                struct stat s;
+                if (stat(tokens[i][j+1].c_str(), &s) == 0) 
+                {
+                    if (s.st_mode & S_IFDIR) 
+                    {
+                        new_location.upload_store = tokens[i][j+1];
+                    }
+                    else
+                    {
+                        logError("Is not a directory : ", tokens[i][j+1]);
+                        return 1;
+                    }
+                }
+                else
+                {
+                    logError("Directory path does not exist: ", tokens[i][j+1]);
+                    return 1;
+                }
             }
 
            else if (inLocation && tokens[i][j] == "cgi" && tokens[i].size() == 4)
@@ -549,6 +566,28 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         return (1);
                     }
                 }
+                
+                else if (inServer && tokens[i][j] == "upload_store" && tokens[i].size() == 3)
+                {
+                    struct stat s;
+                    if (stat(tokens[i][j+1].c_str(), &s) == 0) 
+                    {
+                        if (s.st_mode & S_IFDIR) 
+                        {
+                            servers.back().upload_store = tokens[i][j+1];
+                        }
+                        else
+                        {
+                            logError("Is not a directory : ", tokens[i][j+1]);
+                            return 1;
+                        }
+                    }
+                    else
+                    {
+                        logError("Directory path does not exist: ", tokens[i][j+1]);
+                        return 1;
+                    }
+                }
              
                 else if (tokens[i][j] == "location")
                 {
@@ -556,7 +595,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     {
                         if (fillLocation(tokens, i, servers.back()) != 0)
                         {
-                            logError("Invalid location");
+                            //logError("Invalid location leny");
                             return 1;
                         }
                     }
@@ -564,8 +603,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     {
                         logError("Invalid location");
                         return (1);
-                    }
-                        
+                    }        
                 }
                 
                 else if (tokens[i][j] == "}")
@@ -576,6 +614,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
             }
             i++;  
         }
+        
         return (0);
 }
 
