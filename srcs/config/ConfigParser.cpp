@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/12 11:38:50 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/12 13:25:20 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -436,6 +436,8 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 inLocation = false;
                 if (new_location.client_max_body_size == (size_t)-1)
                     new_location.client_max_body_size = server.client_max_body_size;
+                if (new_location.upload_store == "")
+                    new_location.upload_store = server.upload_store;
                 server.locations.push_back(new_location);
                 return 0;
             }
@@ -457,6 +459,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
     while (i < tokens.size())
         {
             size_t  j = 0;
+            
             while (j < tokens[i].size())
             {
                 if(tokens[i][j] == "server" )
@@ -610,11 +613,17 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                 {
                     inServer = false;
                 }
+                
                 j++;
             }
             i++;  
         }
         
+        if (servers.back().upload_store == "")
+        {
+            logError("Missing upload_store value for server");
+            return (1);
+        }
         return (0);
 }
 
