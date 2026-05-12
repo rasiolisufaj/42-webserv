@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/12 13:49:32 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/12 13:57:23 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -216,7 +216,7 @@ int ConfigParser::validate_error(std::string error_str)
 
 int ConfigParser::validate_method(std::string method)
 {
-    if (method == "GET" || method == "POST" || method == "DELETE")
+    if (method == "GET" || method == "POST" || method == "DELETE" || method == "HEAD")
         return 0;
     else
         return 1;
