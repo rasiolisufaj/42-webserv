@@ -3,14 +3,14 @@
 /*                                                        :::      ::::::::   */
 /*   ConfigParser.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
+/*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/10 15:11:37 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/12 13:09:03 by kobe             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "ConfigParser.hpp"
+#include "config/ConfigParser.hpp"
 
 ConfigParser::ConfigParser()
 {}

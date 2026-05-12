@@ -3,14 +3,14 @@
 /*                                                        :::      ::::::::   */
 /*   Headers.cpp                                        :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: thodavid <thodavid@learner.42.tech>        +#+  +:+       +#+        */
+/*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/06 13:05:23 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/06 13:05:25 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/12 13:09:24 by kobe             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "Headers.hpp"
+#include "http/Headers.hpp"
 #include <cstddef>
 #include <exception>
 #include <stdexcept>
