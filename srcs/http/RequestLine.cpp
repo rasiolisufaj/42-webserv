@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   RequestLine.cpp                                    :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: thodavid <thodavid@learner.42.tech>        +#+  +:+       +#+        */
+/*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/05 15:43:43 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/05 15:43:46 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/12 08:25:37 by kobe             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -50,6 +50,8 @@ static bool check_method(const std::string &method)
 {
     // TODO: add rules if other method add to be supported
     if (method == "GET")
+        return (true);
+    if (method == "HEAD")
         return (true);
     if (method == "POST")
         return (true);
