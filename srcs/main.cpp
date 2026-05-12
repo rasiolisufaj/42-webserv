@@ -1,5 +1,6 @@
 #include "config/ConfigParser.hpp"
 #include "http/Request.hpp"
+#include "cgi/Cgi.hpp"
 
 int main(int ac, char **av)
 {
@@ -19,12 +20,12 @@ int main(int ac, char **av)
         if (Parser.parseConfig(av[1]) != 0)
             return (EXIT_FAILURE);
 
-        const std::vector<ServerConfig> &all_servers = Parser.getServers();
+        // const std::vector<ServerConfig> &all_servers = Parser.getServers();
 
-        for (size_t i = 0; i < all_servers.size(); i++)
-        {
-            all_servers[i].print_servers();
-        }
+        // for (size_t i = 0; i < all_servers.size(); i++)
+        // {
+        //     all_servers[i].print_servers();
+        // }
 
         /***************/
         /*RASIOL'S PART*/
@@ -65,6 +66,11 @@ int main(int ac, char **av)
         hd.parseLine("Host: api.interactivtrading.com"); //valide
         hd.parseLine("Ho st: api.interactivtrading.com"); //invalide
         */
+
+        //CGI PART
+       std::cout << "\n+++CGI LOG+++\n";
+       Cgi my_cgi;
+       my_cgi.execute(rqs);
 
     }
 

@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+         #
+#    By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/12 13:07:49 by kobe             ###   ########.fr        #
+#    Updated: 2026/05/12 17:02:23 by Leny             ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -33,7 +33,7 @@ SRC			=	main \
 				http/Request \
 				config/ConfigParser \
 				config/ServerConfig \
-				cgi/CGIHandler \
+				cgi/Cgi \
 				server/Connection \
 				server/EpollWrapper \
 				server/Server \
