@@ -38,11 +38,10 @@ int main(int ac, char **av)
         /*THOMA'S PART*/
         /**************/
         std::cout << "\n+++REQUEST PARSER LOG+++\n";
-        std::string good_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello";
-        std::string bad_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\rhello";
-        
+        std::string good_requestTest = "POST /cgi-bin/test.py HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello";
         /*TEST REQUEST*/
         Request rqs;
+        //rqs.parse(good_requestTest);
         rqs.parse(good_requestTest);
 
         RequestLine rl;
@@ -70,7 +69,9 @@ int main(int ac, char **av)
         //CGI PART
        std::cout << "\n+++CGI LOG+++\n";
        Cgi my_cgi;
-       my_cgi.execute(rqs);
+       std::map<std::string, std::string> env = my_cgi.setUpEnvironment(rqs);
+       //my_cgi.execute(rqs);
+       my_cgi.print_env(env);
 
     }
 
