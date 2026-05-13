@@ -38,7 +38,7 @@ int main(int ac, char **av)
         /**************/
         std::cout << "\n+++REQUEST PARSER LOG+++\n";
         std::string good_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello";
-        std::string bad_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\rhello";
+        std::string bad_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 50\r\nConnection: close\r\n\rhello  ";
         
         /*TEST REQUEST*/
         Request rqs;

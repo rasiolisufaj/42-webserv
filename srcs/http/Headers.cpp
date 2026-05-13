@@ -6,7 +6,7 @@
 /*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/06 13:05:23 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/12 13:09:24 by kobe             ###   ########.fr       */
+/*   Updated: 2026/05/13 13:35:40 by kobe             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -94,7 +94,7 @@ static std::string to_lower_ascii(const std::string &s)
     return (result);
 }
 
-// control char
+// control char (\r \t \n \0)
 static bool is_ctl(char c)
 {
     unsigned char uc;
