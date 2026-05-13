@@ -69,10 +69,16 @@ int main(int ac, char **av)
         //CGI PART
        std::cout << "\n+++CGI LOG+++\n";
        Cgi my_cgi;
-       std::map<std::string, std::string> env = my_cgi.setUpEnvironment(rqs);
+       std::map<std::string, std::string> map_env = my_cgi.setUpEnvironment(rqs);
        //my_cgi.execute(rqs);
-       my_cgi.print_env(env);
-
+       //my_cgi.print_env(env);
+        char **env = my_cgi.convertMapToEnvp(map_env);
+        int i = 0;
+        while(env[i])
+        {
+            std::cout << env[i] << std::endl;
+            i++;
+        }
     }
 
 
