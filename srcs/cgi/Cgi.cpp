@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   cgi.cpp                                            :+:      :+:    :+:   */
+/*   Cgi.cpp                                            :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
+/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:25:13 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/13 17:32:13 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/14 16:41:12 by lellanos         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -24,6 +24,71 @@ void Cgi::print_env(std::map<std::string, std::string> env_print) const
     }
 }
 
+int Cgi::execute(char **argv, char **envp)
+{
+    (void) argv;
+    (void) envp;
+    if (pipe(fd_in) < 0)
+        return -1;
+    else
+        {
+            if (pipe(fd_out) < 0)
+            {
+                close (fd_in[0]);
+                close (fd_in[1]);
+                return -1;
+            }
+        }
+    pid_t pid = fork();
+    if (pid == -1)
+    {
+        close(fd_in[0]);
+        close(fd_in[1]);
+        close(fd_out[0]);
+        close(fd_out[1]);
+        return -1;
+    }
+    else if (pid == 0)
+    {
+        // hijo
+        std::cout << "This is the child: " << pid << std::endl;
+        if (execve(argv[0], argv, envp) == -1)
+        {
+            perror("Error en execve\n");
+            exit(1);
+        }
+    }
+    
+    else 
+    {
+        //Father   
+        std::cout << "This is the father: " << pid << std::endl;
+        return pid;
+    }
+}
+
+char **Cgi::setupArgv(const Location &loc, std::map<std::string, std::string> &envMap)
+{
+    (void)loc;
+    char **argv =  new char*[3];
+    if(!argv)
+        return NULL;
+    argv[2] = NULL;
+    argv[0] = strdup("/opt/homebrew/bin/python3");
+    if(!argv[0])
+    {
+        delete[] argv;
+        return NULL;
+    }
+    argv[1] = strdup(envMap["PATH_TRANSLATED"].c_str());
+    if(!argv[1])
+    {
+        free(argv[0]);
+        delete[] argv;
+        return NULL;
+    }
+    return argv;
+}
 
 char **Cgi::convertMapToEnvp(std::map<std::string, std::string> &envMap)
 {
@@ -66,13 +131,14 @@ std::map<std::string, std::string> Cgi::setUpEnvironment(const Request& req)
     env["SERVER_PROTOCOL"] = req.requestLine().version();
     env["SERVER_SOFTWARE"] = "Webserv/1.0";
     env["REQUEST_METHOD"] = req.requestLine().method();
-    env["PATH_INFO"] = req.requestLine().target();
+    env["CONTENT_LENGTH"] = ContentLenght;
     env["PATH_TRANSLATED"] = "./www/cgi-bin/test.py";
     env["QUERY_STRING"] = "" ;
-    env["CONTENT_LENGTH"] = ContentLenght;
+   
+    env["PATH_INFO"] = "";
     env["CONTENT_TYPE"] = "" ;
     env["REMOTE_ADDR"] = "127.0.0.1";
-    env["SCRIPT_NAME"] = "/opt/homebrew/bin/python3" ;
+    env["SCRIPT_NAME"] =  req.requestLine().target();
     env["SERVER_PORT"] = "8080" ;
     env["SERVER_NAME"] = "localhost" ;
     return env;
