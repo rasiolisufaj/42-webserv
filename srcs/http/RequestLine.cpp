@@ -6,7 +6,7 @@
 /*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/05 15:43:43 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/13 14:10:27 by kobe             ###   ########.fr       */
+/*   Updated: 2026/05/13 14:21:27 by kobe             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -59,7 +59,7 @@ static std::vector<std::string> split_request_line(const std::string &line)
     if (line.find(' ', second_sp + 1) != std::string::npos)
         throw(std::runtime_error("400 Bad Request: too many spaces in request line"));
 
-    //if space at the begining/ if no space between token/ if space at the end 
+    //if space at the begining/ if space between>1 token/ if space at the end 
     if (first_sp == 0 || second_sp == first_sp + 1 || second_sp == line.size() - 1)
         throw(std::runtime_error("400 Bad Request: empty request line token"));
 
@@ -73,7 +73,7 @@ static std::vector<std::string> split_request_line(const std::string &line)
 // support method
 static bool check_method(const std::string &method)
 {
-    // TODO: add rules if other method add to be supported
+    // TODO: add rules if other method be supported
     if (method == "GET")
         return (true);
     if (method == "HEAD")

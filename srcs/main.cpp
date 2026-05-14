@@ -52,6 +52,8 @@ int main(int ac, char **av)
         Headers hd;
         hd = rqs.headers();
         std::cout << hd.getHeader("host") << "\n> ";   //   => "localhost:8080"
+        std::cout << hd.getHost().name << "\n> ";
+        std::cout << hd.getHost().port << "\n> ";
         std::cout << hd.getContentLength() << "\n> ";   //   => 5
         std::cout << hd.wantsClose() << "\n> ";         //   => true
 

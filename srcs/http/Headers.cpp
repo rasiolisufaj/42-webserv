@@ -6,7 +6,7 @@
 /*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/06 13:05:23 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/13 13:35:40 by kobe             ###   ########.fr       */
+/*   Updated: 2026/05/14 13:26:26 by kobe             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -225,6 +225,43 @@ size_t Headers::getContentLength() const
         i++;
     }
     return (result);
+}
+
+HostInfo Headers::getHost() const
+{
+    HostInfo    info;
+    std::string value;
+    size_t      pos;
+
+    value = getHeader("host");
+
+    if (value.empty())
+        throw(std::runtime_error("400 Bad Request: empty Host"));
+
+    pos = value.find(':');
+    if (pos == std::string::npos)
+    {
+        info.name = value;
+        info.port = "";
+    }
+    else
+    {
+        info.name = value.substr(0, pos);
+        info.port = value.substr(pos + 1);
+
+        if (info.name.empty() || info.port.empty())
+            throw(std::runtime_error("400 Bad Request: invalid Host"));
+
+        // Port: digits only
+        size_t i = 0;
+        while (i < info.port.size())
+        {
+            if (info.port[i] < '0' || info.port[i] > '9')
+                throw(std::runtime_error("400 Bad Request: invalid Host port"));
+            i++;
+        }
+    }
+    return (info);
 }
 
 bool Headers::wantsClose() const
