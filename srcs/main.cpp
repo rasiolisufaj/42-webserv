@@ -1,5 +1,6 @@
 #include "config/ConfigParser.hpp"
 #include "http/Request.hpp"
+#include "utils/Logger.hpp"
 
 int main(int ac, char **av)
 {
@@ -76,3 +77,28 @@ int main(int ac, char **av)
     }
     return (EXIT_SUCCESS);
 }
+
+// int main()
+// {
+//     Logger::log(Logger::INFO, "WebServ started successfully.");
+//     Logger::log(Logger::DEBUG, "This is a debug message.");
+//     Logger::log(Logger::WARNING, "This is a warning message.");
+//     Logger::log(Logger::ERROR, "This is an error message.");
+
+//     int fd = 42;
+//     double timeout = 3.14;
+
+//     Logger::log(Logger::INFO,
+//         "fd = " + to_string(fd));
+
+//     Logger::log(Logger::INFO,
+//         "timeout = " + to_string(timeout));
+
+//     std::cout << "\n=== Changing log level to WARNING ===" << std::endl;
+
+//     Logger::setLogLevel(Logger::WARNING);
+//     Logger::log(Logger::INFO, "This INFO message should NOT appear.");
+//     Logger::log(Logger::DEBUG, "This DEBUG message should NOT appear.");
+//     Logger::log(Logger::WARNING, "This WARNING message should appear.");
+//     Logger::log(Logger::ERROR, "This ERROR message should appear.");
+// }
