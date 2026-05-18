@@ -18,17 +18,17 @@ static void validate_content_length(const std::string &body_candidate, size_t co
 // split request to: request line / headers / body
 void Request::parse(const std::string &fullRequest)
 {
-    std::string double_CRLF;
-    std::string head;
-    std::string body_candidate;
-    std::string single_CRLF;
-    std::string request_line;
-    std::string headers_part;
-    size_t header_end;
-    size_t request_line_end;
-    size_t content_length;
-
     // RFC 2616 §4.1: request = request-line + headers + empty line + optional body    
+
+    std::string     head;
+    std::string     body_candidate;
+    std::string     request_line;
+    std::string     headers_part;
+    std::string     double_CRLF;
+    std::string     single_CRLF;
+    size_t          header_end;
+    size_t          request_line_end;
+
     single_CRLF = "\r\n";
     double_CRLF = "\r\n\r\n";
 
@@ -40,6 +40,7 @@ void Request::parse(const std::string &fullRequest)
     head = fullRequest.substr(0, header_end);
     body_candidate = fullRequest.substr(header_end + double_CRLF.size());
 
+    //HEADERS
     // split headers and request line (RL = first \r\n)
     request_line_end = head.find(single_CRLF);
     if (request_line_end == std::string::npos)
@@ -56,9 +57,9 @@ void Request::parse(const std::string &fullRequest)
     _requestLine.parse(request_line);
 
     // split and stock headers (via parsing_)
-    size_t start;
-    size_t end;
-    std::string line;
+    size_t          start;
+    size_t          end;
+    std::string     line;
 
     start = 0;
     while (start < headers_part.size())
@@ -79,6 +80,7 @@ void Request::parse(const std::string &fullRequest)
             _headers.parseLine(line);
     }
 
+    //RFC 2616 §5.2 The Resource Identified by a Request
     if (_requestLine.version() == "HTTP/1.1" && !_headers.hasHeader("host"))
         throw(std::runtime_error("400 Bad Request: missing Host header"));
 
@@ -86,10 +88,12 @@ void Request::parse(const std::string &fullRequest)
     if (_headers.hasHeader("transfer-encoding"))
         throw(std::runtime_error("501 Not Implemented: Transfer-Encoding"));
 
+    size_t content_length;
     content_length = _headers.getContentLength();
 
     validate_content_length(body_candidate, content_length);
 
+    //BODY
     _body = body_candidate.substr(0, content_length);
 }
 
