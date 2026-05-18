@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+         #
+#    By: raisufaj <raisufaj@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/12 13:07:49 by kobe             ###   ########.fr        #
+#    Updated: 2026/05/17 15:34:59 by raisufaj         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -39,7 +39,7 @@ SRC			=	main \
 				server/Server \
 				server/SessionManager \
 				server/Socket \
-				utils/utils
+				utils/Logger \
 
 SRCS		= $(addprefix $(SRCDIR)/,$(addsuffix .cpp,$(SRC)))
 OBJ			= $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
