@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Cgi.cpp                                            :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
+/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:25:13 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/14 16:41:12 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/18 18:32:14 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -24,10 +24,17 @@ void Cgi::print_env(std::map<std::string, std::string> env_print) const
     }
 }
 
+void Cgi::free_array(char **array)
+{
+    if (!array)
+        return ;
+    for(int i = 0; array[i] != NULL; i++)
+        free(array[i]);
+    delete[] array;
+}
+
 int Cgi::execute(char **argv, char **envp)
 {
-    (void) argv;
-    (void) envp;
     if (pipe(fd_in) < 0)
         return -1;
     else
@@ -50,21 +57,36 @@ int Cgi::execute(char **argv, char **envp)
     }
     else if (pid == 0)
     {
-        // hijo
-        std::cout << "This is the child: " << pid << std::endl;
+        //child
+        dup2(fd_in[0], STDIN_FILENO);
+        dup2(fd_out[1], STDOUT_FILENO);
+
+        close(fd_in[0]);
+        close(fd_in[1]);
+        close(fd_out[0]);
+        close(fd_out[1]);
+
         if (execve(argv[0], argv, envp) == -1)
         {
-            perror("Error en execve\n");
+            perror("Error en execve");
             exit(1);
         }
     }
     
     else 
     {
-        //Father   
-        std::cout << "This is the father: " << pid << std::endl;
+        // Father
+        // fd_in[1] post for write, fd_out[0]listen the epoll
+        close(fd_in[0]);
+        close(fd_out[1]);
+        
+       // free_array(argv);
+        //free_array(envp);
+        
+        std::cout << "This is the father, CGI running with PID: " << pid << std::endl;
         return pid;
     }
+    return -1;
 }
 
 char **Cgi::setupArgv(const Location &loc, std::map<std::string, std::string> &envMap)

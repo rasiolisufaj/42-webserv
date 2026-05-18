@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Cgi.hpp                                            :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lellanos <lellanos@student.42.fr>          +#+  +:+       +#+        */
+/*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:26:03 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/14 16:38:20 by lellanos         ###   ########.fr       */
+/*   Updated: 2026/05/18 18:16:05 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -34,6 +34,7 @@ class Cgi{
         char **setupArgv(const Location &loc, std::map<std::string, std::string> &envMap);
         char **convertMapToEnvp(std::map<std::string, std::string> &envMap);
         int execute(char **argv, char **envp);
+        void free_array(char **array);
 };
 
 #endif
