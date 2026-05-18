@@ -6,7 +6,7 @@
 /*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/06 13:05:23 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/14 13:26:26 by kobe             ###   ########.fr       */
+/*   Updated: 2026/05/18 16:47:31 by kobe             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <exception>
 #include <stdexcept>
+#include <limits>
 #include <map>
 
 /*
@@ -169,12 +170,11 @@ void Headers::parseLine(const std::string &line)
         throw(std::runtime_error("400 Bad Request: invalid header name"));
 
     key = to_lower_ascii(key);
-    value = trim_lws(value);
+    value = trim_lws(value); // supp all spaces
     value = normalize_lws_inside(value);
 
     // stock in the map(_fields)
-    // if two host or content-length =>error  | else if more same other header => header : value1, value2...
-    // PARSING CHOICE headers duplicate!
+    // if duplicate HOST or CONTENT-LENGTH =>error  | else if more same other header => header : value1, value2...
     if (_fields.find(key) != _fields.end())
     {
         if (key == "host" || key == "content-length")
@@ -185,8 +185,7 @@ void Headers::parseLine(const std::string &line)
         _fields[key] = value;
 }
 
-
-//utils
+// utils
 bool Headers::hasHeader(const std::string &name) const { return (_fields.find(to_lower_ascii(name)) != _fields.end()); }
 
 std::string Headers::getHeader(const std::string &name) const
@@ -204,8 +203,10 @@ std::string Headers::getHeader(const std::string &name) const
 size_t Headers::getContentLength() const
 {
     std::string value;
-    size_t      i;
-    size_t      result;
+    size_t i;
+    size_t result;
+    size_t digit;
+    size_t max;
 
     if (!hasHeader("content-length"))
         return (0);
@@ -215,13 +216,20 @@ size_t Headers::getContentLength() const
         throw(std::runtime_error("400 Bad Request: invalid Content-Length"));
 
     result = 0;
+    max = std::numeric_limits<size_t>::max();
+
     i = 0;
     while (i < value.size())
     {
         if (value[i] < '0' || value[i] > '9')
             throw(std::runtime_error("400 Bad Request: invalid Content-Length"));
 
-        result = result * 10 + (value[i] - '0');
+        digit = value[i] - '0';
+
+        if (result > (max - digit) / 10)
+            throw(std::runtime_error("400 Bad Request: Content-Length too large"));
+
+        result = result * 10 + digit;
         i++;
     }
     return (result);
@@ -229,9 +237,9 @@ size_t Headers::getContentLength() const
 
 HostInfo Headers::getHost() const
 {
-    HostInfo    info;
+    HostInfo info;
     std::string value;
-    size_t      pos;
+    size_t pos;
 
     value = getHeader("host");
 
