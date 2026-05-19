@@ -6,10 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/19 12:52:28 by kobe              #+#    #+#             */
-/*   Updated: 2026/05/19 12:54:54 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/19 13:14:36 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#pragma once
-#include <cstddef>
-#include <string>
