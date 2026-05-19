@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/19 21:12:09 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/19 21:26:46 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -365,81 +365,107 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 }
             }
             
-            else if (inLocation && tokens[i][j] == "return" && tokens[i].size() > 2)
+            else if (inLocation && tokens[i][j] == "return" )
             {
-                if(validate_return_code(tokens[i][j+1]) != 0)
+                if(tokens[i].size() > 2 && tokens[i].size() < 5)
                 {
-                    logError("Invalid return", tokens[i][j+1]);
-                    return 1;
-                }
-                else
-                {
-                    return_code = atoi(tokens[i][j+1].c_str());
-                    if ((return_code >= 300 && return_code <= 399))
+                    if(validate_return_code(tokens[i][j+1]) != 0)
                     {
-                        if(tokens[i].size() == 4)
+                        logError("Invalid return", tokens[i][j+1]);
+                        return 1;
+                    }
+                    else
+                    {
+                        return_code = atoi(tokens[i][j+1].c_str());
+                        if ((return_code >= 300 && return_code <= 399))
                         {
-                            new_location.return_code = return_code;
-                            new_location.return_redir = tokens[i][j+2];
+                            if(tokens[i].size() == 4)
+                            {
+                                new_location.return_code = return_code;
+                                new_location.return_redir = tokens[i][j+2];
+                            }
+                            else
+                            {
+                                logError("Invalid return, missing url", tokens[i][j+1]);
+                                return 1;
+                            }
                         }
                         else
                         {
-                            logError("Invalid return, missing url", tokens[i][j+1]);
+                            if(tokens[i].size() == 4)
+                            {
+                                new_location.return_code = return_code;
+                                new_location.return_redir = tokens[i][j+2];
+                            }
+                            else
+                                new_location.return_code = return_code;
+                        }        
+                    }
+                }
+                else
+                {
+                    logError("Invalid return", "", i+1);
+                    return 1;
+                }
+            }
+            
+           else if (inLocation && tokens[i][j] == "upload_store")
+            {
+                if (tokens[i].size() == 3)
+                {
+                    struct stat s;
+                    if (stat(tokens[i][j+1].c_str(), &s) == 0) 
+                    {
+                        if (s.st_mode & S_IFDIR) 
+                        {
+                            new_location.upload_store = tokens[i][j+1];
+                        }
+                        else
+                        {
+                            logError("Is not a directory : ", tokens[i][j+1]);
                             return 1;
                         }
                     }
                     else
                     {
-                        if(tokens[i].size() == 4)
-                        {
-                            new_location.return_code = return_code;
-                            new_location.return_redir = tokens[i][j+2];
-                        }
-                        else
-                            new_location.return_code = return_code;
-                    }        
-                }
-            }
-            
-           else if (inLocation && tokens[i][j] == "upload_store" && tokens[i].size() == 3)
-            {
-                struct stat s;
-                if (stat(tokens[i][j+1].c_str(), &s) == 0) 
-                {
-                    if (s.st_mode & S_IFDIR) 
-                    {
-                        new_location.upload_store = tokens[i][j+1];
-                    }
-                    else
-                    {
-                        logError("Is not a directory : ", tokens[i][j+1]);
+                        logError("Directory path does not exist: ", tokens[i][j+1]);
                         return 1;
                     }
                 }
                 else
                 {
-                    logError("Directory path does not exist: ", tokens[i][j+1]);
+                    logError("Invalid upload_store", "", i+1);
                     return 1;
                 }
+                
             }
 
-           else if (inLocation && tokens[i][j] == "cgi" && tokens[i].size() == 4)
+           else if (inLocation && tokens[i][j] == "cgi" )
             {
-                struct stat s;
-                if (stat(tokens[i][j+2].c_str(), &s) == 0) 
+                if (tokens[i].size() == 4)
                 {
-                    if (s.st_mode & S_IFDIR) 
+                    struct stat s;
+                    if (stat(tokens[i][j+2].c_str(), &s) == 0) 
                     {
-                        logError("CGI path is a directory", tokens[i][j+2]);
+                        if (s.st_mode & S_IFDIR) 
+                        {
+                            logError("CGI path is a directory", tokens[i][j+2], i+1);
+                            return 1;
+                        }
+                    }
+                    if (validate_extension(tokens[i][j+1]) != 0)
+                    {
+                        logError("CGI extension", tokens[i][j+1], i+1);
                         return 1;
                     }
+                    new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
                 }
-                if (validate_extension(tokens[i][j+1]) != 0)
+                else
                 {
-                    logError("CGI extension", tokens[i][j+1]);
+                    logError("Invalid CGI", "", i+1);
                     return 1;
                 }
-                new_location.cgi[tokens[i][j+1]] = tokens[i][j+2];
+                
             }
                         
             else if (inLocation && tokens[i][j] == "client_max_body_size" )
@@ -448,7 +474,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 {
                     if (validate_body_size(tokens[i][j+1]) != 0)
                     {
-                        logError("Incorrect client_max_body_size", tokens[i][j+1]);
+                        logError("Incorrect client_max_body_size", tokens[i][j+1], i+1);
                         return 1;
                     }
                     size = atoll(tokens[i][j+1].c_str());
@@ -456,7 +482,7 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 }
                 else
                 {
-                    logError("Incorrect client_max_body_size", tokens[i][j+1]);
+                    logError("Incorrect client_max_body_size", "", i+1);
                     return (1);
                 }
             }
@@ -501,7 +527,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     }
                     else
                     {
-                        logError("Invalid server", tokens[i][j+1]);
+                        logError("Invalid server", tokens[i][j+1], i+1);
                         return (1);
                     }
                 }
