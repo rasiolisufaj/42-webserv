@@ -30,6 +30,7 @@ struct Location {
     client_max_body_size((size_t)-1)
     {
         allowed_methods.push_back("GET");
+        allowed_methods.push_back("HEAD");
     }
 };
 
