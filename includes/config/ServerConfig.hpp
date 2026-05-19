@@ -37,7 +37,7 @@ class ServerConfig {
 public:
     int                         port;
     std::string                 host;
-    std::vector<std::string>    server_names;
+    std::string                 server_name;
     std::map<int, std::string>  error_pages;
     size_t                      client_max_body_size;
     size_t                      client_max_header_size;

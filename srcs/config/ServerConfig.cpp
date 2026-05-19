@@ -3,7 +3,7 @@
 
 ServerConfig::ServerConfig() {
     port = 8080;         
-    host = "0.0.0.0";
+    host = "127.0.0.1";
     client_max_body_size = 1000000;
     client_max_header_size = 8192;
     upload_store = "";
@@ -17,13 +17,7 @@ void ServerConfig::print_servers() const
     std::cout << std::endl << "-------------- Server --------------" << std::endl;
     std::cout << "listen: " << this->port << std::endl;
     std::cout << "host: " << this->host << std::endl;
-    size_t i = 0;
-    std::cout << "server_name : ";
-    while (i < this->server_names.size())
-    {
-        std::cout << this->server_names.at(i) << " ";
-        i++;
-    }
+    std::cout << "server_name : " << this->server_name << std::endl;
     std::cout <<  std::endl;
     std::cout << "client_max_body_size: " << this->client_max_body_size << std::endl;
     std::cout << "client_max_header_size: " << this->client_max_header_size << std::endl;

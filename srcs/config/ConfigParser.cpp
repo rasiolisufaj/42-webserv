@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/12 15:00:52 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/19 21:12:09 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -291,48 +291,76 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                 new_location.path = tokens[i][1];
             }
             
-            else if(inLocation && tokens[i][j] == "allow_methods" && tokens[i].size() > 2)
+            else if(inLocation && tokens[i][j] == "allow_methods")
             {
-                j++;
-                bool flag = true;
-                while (tokens[i][j] != ";")
+                if (tokens[i].size() >= 3 && tokens[i].size() <= 6)
                 {
-                    if (validate_method(tokens[i][j]) == 0)
+                    j++;
+                    bool flag = true;
+                    while (tokens[i][j] != ";")
                     {
-                        if(flag)
+                        if (validate_method(tokens[i][j]) == 0)
                         {
-                            new_location.allowed_methods.clear();
-                            flag = false;
+                            if(flag)
+                            {
+                                new_location.allowed_methods.clear();
+                                flag = false;
+                            }
+                            new_location.allowed_methods.push_back(tokens[i][j]);
+                            j++;
                         }
-                        new_location.allowed_methods.push_back(tokens[i][j]);
-                        j++;
+                        else
+                        {
+                            logError("Invalid allowed methods ", tokens[i][j], i+1);
+                            return 1;
+                        }
                     }
+                }
+                else
+                {
+                    logError("Invalid allowed methods", "", i+1);
+                    return 1;
+                }
+            }
+            else if (inLocation && tokens[i][j] == "root")
+            {
+                if(tokens[i].size() == 3)
+                    new_location.root = tokens[i][j+1];
+                else
+                {
+                    logError("Invalid root", "", i+1);
+                    return 1;
+                }
+            }
+            
+            else if (inLocation && tokens[i][j] == "index")
+            {
+                if(tokens[i].size() == 3)
+                    new_location.index = tokens[i][j+1];
+                else
+                {
+                    logError("Invalid index", "", i+1);
+                    return 1;
+                }
+            }
+            
+            else if (inLocation && tokens[i][j] == "autoindex" )
+            {
+                if (tokens[i].size() == 3)
+                {
+                    if (tokens[i][j+1] == "on")
+                        new_location.autoindex = true;
+                    else if (tokens[i][j+1] == "off")
+                        new_location.autoindex = false;
                     else
                     {
-                        logError("Invalid allowed methods", tokens[i][j]);
+                        logError("Invalid autoindex", tokens[i][j+1], i+1);
                         return 1;
                     }
                 }
-            }
-            else if (inLocation && tokens[i][j] == "root" && tokens[i].size() == 3)
-            {
-                new_location.root = tokens[i][j+1];
-            }
-            
-            else if (inLocation && tokens[i][j] == "index" && tokens[i].size() == 3)
-            {
-                new_location.index = tokens[i][j+1];
-            }
-            
-            else if (inLocation && tokens[i][j] == "autoindex" && tokens[i].size() == 3)
-            {
-                if (tokens[i][j+1] == "on")
-                    new_location.autoindex = true;
-                else if (tokens[i][j+1] == "off")
-                    new_location.autoindex = false;
                 else
                 {
-                    logError("Invalid autoindex", tokens[i][j+1]);
+                    logError("Invalid autoindex", "", i+1);
                     return 1;
                 }
             }
@@ -487,7 +515,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         {
                             if(validate_port(tokens[i][j+1]) != 0)
                             {
-                                logError("Invalid port", tokens[i][j+1]);
+                                logError("Invalid port ", tokens[i][j+1], i+1);
                                 return 1;
                             }
                             port = atoi(tokens[i][j+1].c_str());
@@ -501,7 +529,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                             port_str = tokens[i][j+1].substr(pos+1);
                             if (validate_port(port_str) || validate_host(host_str))
                             {
-                                logError("Invalid port", tokens[i][j+1]);
+                                logError("Invalid socket address", tokens[i][j+1], i+1);
                                 return 1;
                             }
                             port = atoi(port_str.c_str());
@@ -511,25 +539,18 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     }
                     else
                     {
-                        logError("Invalid port", tokens[i][j+1]);
+                        logError("Invalid port", tokens[i][j+1], i+1);
                         return (1);
                     }
                 }
              
                 else if (tokens[i][j] == "server_name")
                 {
-                    if (inServer && tokens[i].size() > 2)
-                    {
-                        j++;
-                        while (tokens[i][j] != ";")
-                        {
-                            servers.back().server_names.push_back(tokens[i][j]);
-                            j++;
-                        }
-                    }
+                    if (inServer && tokens[i].size() == 3)
+                        servers.back().server_name =  tokens[i][j+1];
                     else
                     {
-                        logError("Invalid server_name");
+                        logError("Invalid server_name ", "", i+1);
                         return (1);
                     }
                 }
@@ -540,7 +561,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     {
                         if (validate_body_size(tokens[i][j+1]) != 0)
                         {
-                            logError("Invalid server client_max_body_size", tokens[i][j+1]);
+                            logError("Invalid server client_max_body_size", tokens[i][j+1], i+1);
                             return 1;
                         }
                         size = atoll(tokens[i][j+1].c_str());
@@ -548,7 +569,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     }
                     else
                     {
-                        logError("Invalid server client_max_body_size", tokens[i][j+1]);
+                        logError("Invalid server client_max_body_size", tokens[i][j+1], i+1);
                         return (1);
                     }
                 }
@@ -559,7 +580,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     {
                         if (validate_body_size(tokens[i][j+1]) != 0)
                         {
-                            logError("Invalid server client_max_header_size", tokens[i][j+1]);
+                            logError("Invalid server client_max_header_size", tokens[i][j+1], i+1);
                             return 1;
                         }
                         size = atoll(tokens[i][j+1].c_str());
@@ -567,7 +588,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     }
                     else
                     {
-                        logError("Invalid server client_max_header_size", tokens[i][j+1]);
+                        logError("Invalid server client_max_header_size", tokens[i][j+1], i+1);
                         return (1);
                     }
                 }
@@ -578,7 +599,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     {
                         if (validate_error(tokens[i][j+1]) != 0)
                         {
-                            logError("Invalid server error_page", tokens[i][j+1]);
+                            logError("Invalid server error_page", tokens[i][j+1], i+1);
                             return 1;
                         }
                         error = atoi(tokens[i][j+1].c_str());
@@ -586,7 +607,7 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     }
                     else
                     {
-                        logError("Invalid server error_page", tokens[i][j+1]);
+                        logError("Invalid server error_page", tokens[i][j+1], i+1);
                         return (1);
                     }
                 }
@@ -602,13 +623,13 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         }
                         else
                         {
-                            logError("Is not a directory : ", tokens[i][j+1]);
+                            logError("Is not a directory : ", tokens[i][j+1], i+1);
                             return 1;
                         }
                     }
                     else
                     {
-                        logError("Directory path does not exist: ", tokens[i][j+1]);
+                        logError("Directory path does not exist: ", tokens[i][j+1], i+1);
                         return 1;
                     }
                 }
@@ -619,13 +640,12 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                     {
                         if (fillLocation(tokens, i, servers.back()) != 0)
                         {
-                            //logError("Invalid location leny");
                             return 1;
                         }
                     }
                     else
                     {
-                        logError("Invalid location");
+                        logError("Invalid location", "", i+1);
                         return (1);
                     }        
                 }
@@ -654,13 +674,13 @@ const std::vector<ServerConfig>& ConfigParser::getServers() const
     return servers;
 }
 
-void ConfigParser::logError(const std::string& message, const std::string& detail) 
+void ConfigParser::logError(const std::string& message, const std::string& detail, int index) 
 {
     std::cerr << "ERROR : " << message;
         if (!detail.empty()) 
-        {
             std::cerr << " (" << detail << ")" ;
-        }
+        if(index != -1)
+            std::cerr << " at line " << index;
     std::cerr << std::endl;
 }
 
