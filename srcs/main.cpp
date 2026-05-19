@@ -76,7 +76,8 @@ int main(int ac, char **av)
        //my_cgi.print_env(env);
         char **envp = my_cgi.convertMapToEnvp(map_env);
         char **argv = my_cgi.setupArgv(loc, map_env);
-        my_cgi.execute(argv, envp);
+        pid_t pid = my_cgi.execute(argv, envp);
+        
         
     }
 
