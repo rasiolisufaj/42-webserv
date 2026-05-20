@@ -6,11 +6,12 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/06 13:05:23 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/19 12:55:05 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/20 11:11:46 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "http/Headers.hpp"
+#include "http/utils_http.hpp"
 #include <cstddef>
 #include <exception>
 #include <stdexcept>
@@ -71,25 +72,6 @@ static std::string normalize_lws_inside(const std::string &s)
             result += s[i];
             in_lws = false;
         }
-        i++;
-    }
-    return (result);
-}
-
-// ascii only!
-static std::string to_lower_ascii(const std::string &s)
-{
-    std::string result;
-    size_t i;
-    char c;
-
-    result = s;
-    i = 0;
-    while (i < result.size())
-    {
-        c = result[i];
-        if (c >= 'A' && c <= 'Z')
-            result[i] = c + 32;
         i++;
     }
     return (result);
@@ -177,7 +159,7 @@ void Headers::parseLine(const std::string &line)
     // if duplicate HOST or CONTENT-LENGTH =>error  | else if more same other header => header : value1, value2...
     if (_fields.find(key) != _fields.end())
     {
-        if (key == "host" || key == "content-length")
+        if (key == "host" || key == "content-length"  || key == "transfer-encoding")
             throw(std::runtime_error("400 Bad Request: duplicated header (host/content-length)"));
         _fields[key] += ", " + value;
     }

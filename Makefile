@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+         #
+#    By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/12 13:07:49 by kobe             ###   ########.fr        #
+#    Updated: 2026/05/20 11:07:35 by thodavid         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -31,6 +31,8 @@ SRC			=	main \
 				http/RequestLine \
 				http/Headers \
 				http/Request \
+				http/ChunkDecod \
+				http/utils_http \
 				config/ConfigParser \
 				config/ServerConfig \
 				cgi/CGIHandler \
