@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/21 10:29:13 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/21 10:41:45 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/21 13:48:36 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -77,6 +77,21 @@ static std::string percent_decode(const std::string &s)
     return (result);
 }
 
+static void validate_decoded_path(const std::string &s)
+{
+    size_t i;
+    unsigned char uc;
+
+    i = 0;
+    while (i < s.size())
+    {
+        uc = static_cast<unsigned char>(s[i]);
+        if (uc <= 31 || uc == 127)
+            throw(std::runtime_error("400 Bad Request: control char in decoded path"));
+        i++;
+    }
+}
+
 void RequestTarget::parse(const std::string &target)
 {
     std::string raw_path;
@@ -85,6 +100,7 @@ void RequestTarget::parse(const std::string &target)
     split_path_query(target, raw_path, raw_query);
 
     _path = percent_decode(raw_path);
+    validate_decoded_path(_path);
     _query = raw_query;
 }
 

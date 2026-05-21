@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/19 12:55:11 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/21 09:49:43 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/21 12:15:15 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -93,17 +93,15 @@ void Request::parse(const std::string &fullRequest)
         throw(std::runtime_error("400 Bad Request: missing Host header"));
 
     // BODY
-    // TE vs CL (chunk)
-    bool has_te = _headers.hasHeader("transfer-encoding");
-    bool has_cl = _headers.hasHeader("content-length");
+    bool has_transf_encoding = _headers.hasHeader("transfer-encoding");
+    bool has_cont_len = _headers.hasHeader("content-length");
 
-    if (has_te && has_cl)
+    if (has_transf_encoding && has_cont_len)
         throw(std::runtime_error("400 Bad Request: both Transfer-Encoding and Content-Length"));
 
-    if (has_te)
+    if (has_transf_encoding)
     {
         // only chunked is supported.
-
         std::string te = to_lower_ascii(_headers.getHeader("transfer-encoding"));
         if (te != "chunked")
             throw(std::runtime_error("501 Not Implemented: unsupported Transfer-Encoding (only chunk)"));
@@ -118,6 +116,7 @@ void Request::parse(const std::string &fullRequest)
         // TODO: récupérer max_body depuis la config plutôt qu'en dur
         if (content_length > 100 * 1024 * 1024)
             throw(std::runtime_error("413 Payload Too Large"));
+        //TODO: non-keep-alive => OK maiis keep-alive => KO
         validate_content_length(body_candidate, content_length);
         _body = body_candidate.substr(0, content_length);
 
