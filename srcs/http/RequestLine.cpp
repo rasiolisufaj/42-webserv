@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/05 15:43:43 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/19 12:54:59 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/21 10:47:30 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -235,6 +235,7 @@ void RequestLine::parse(const std::string &line)
     else if (!is_valid_origin_target(target))
         throw(std::runtime_error("400 Bad Request: invalid target"));
 
+    _parsed_target.parse(target);
     _method = method;
     _target = target;
     _version = version;
@@ -246,3 +247,5 @@ const std::string &RequestLine::method() const { return (_method); }
 const std::string &RequestLine::target() const { return (_target); }
 const std::string &RequestLine::version() const { return (_version); }
 const std::string &RequestLine::authority() const { return (_authority); }
+const std::string &RequestLine::path() const { return (_parsed_target.path()); }
+const std::string &RequestLine::query() const { return (_parsed_target.query()); }

@@ -6,30 +6,17 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/19 12:52:28 by kobe              #+#    #+#             */
-/*   Updated: 2026/05/20 10:38:32 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/21 10:40:26 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "http/ChunkDecod.hpp"
+#include "http/utils_http.hpp"
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
 #include <string>
 
-
-//Utils
-static int hex_value(char c)
-{
-    if (c >= '0' && c <= '9')
-        return (c - '0');
-    if (c >= 'a' && c <= 'f')
-        return (c - 'a' + 10);
-    if (c >= 'A' && c <= 'F')
-        return (c - 'A' + 10);
-    return (-1);
-}
-
-//Constr
 ChunkDecoder::ChunkDecoder() : _max_body(DEFAULT_MAX_BODY) {}
 ChunkDecoder::ChunkDecoder(size_t max_body) : _max_body(max_body) {}
 

@@ -6,7 +6,7 @@
 #    By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/20 11:07:35 by thodavid         ###   ########.fr        #
+#    Updated: 2026/05/21 10:48:29 by thodavid         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -32,6 +32,7 @@ SRC			=	main \
 				http/Headers \
 				http/Request \
 				http/ChunkDecod \
+				http/RequestTarget \
 				http/utils_http \
 				config/ConfigParser \
 				config/ServerConfig \

@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/19 12:55:11 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/20 11:19:35 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/21 09:49:43 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -114,7 +114,6 @@ void Request::parse(const std::string &fullRequest)
     else
     {
         // Standard Content-Length/body
-
         size_t content_length = _headers.getContentLength();
         // TODO: récupérer max_body depuis la config plutôt qu'en dur
         if (content_length > 100 * 1024 * 1024)
