@@ -1,6 +1,7 @@
 #include "config/ConfigParser.hpp"
 #include "http/Request.hpp"
 #include "cgi/Cgi.hpp"
+#include <fcntl.h>
 
 int main(int ac, char **av)
 {
@@ -72,14 +73,41 @@ int main(int ac, char **av)
        Cgi my_cgi;
        Location loc;
        std::map<std::string, std::string> map_env = my_cgi.setUpEnvironment(rqs);
-       //my_cgi.execute(rqs);
-       //my_cgi.print_env(env);
         char **envp = my_cgi.convertMapToEnvp(map_env);
         char **argv = my_cgi.setupArgv(loc, map_env);
         pid_t pid = my_cgi.execute(argv, envp);
-        
-        
-    }
+        if (pid > 0)
+        {
+            close(my_cgi.getFdInWrite()) ;
+            char buffer[4096];
+            int bytes_read;
+            std::string cgi_response = "";
+            while ((bytes_read = read(my_cgi.getFdOutRead(), buffer, sizeof(buffer) - 1)) > 0)
+            {
+                buffer[bytes_read] = '\0';
+                cgi_response += buffer;
+            }
+            std::cout << "\n--- [Padre] Respuesta del CGI recibida: ---\n";
+            std::cout << cgi_response << std::endl;
+            std::cout << "-------------------------------------------\n";
+            close(my_cgi.getFdOutRead());
+            int status;
+            waitpid(pid, &status, 0);
+        }
+
+        my_cgi.free_array(argv);
+        my_cgi.free_array(envp);
+
+        std::cout << "--- Check fds open ---" << std::endl;
+        for (int fd = 3; fd < 20; fd++) 
+        {
+            if (fcntl(fd, F_GETFD) != -1) {
+                std::cout << " FD [" << fd << "] OPEN " << std::endl;
+            }
+        }
+        std::cout << "------------------------------------" << std::endl;
+
+        }
 
 
     catch (std::runtime_error &e)

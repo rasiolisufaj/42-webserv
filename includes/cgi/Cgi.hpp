@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:26:03 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/18 18:16:05 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/22 15:18:26 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -35,6 +35,8 @@ class Cgi{
         char **convertMapToEnvp(std::map<std::string, std::string> &envMap);
         int execute(char **argv, char **envp);
         void free_array(char **array);
+        int getFdInWrite();
+        int getFdOutRead();
 };
 
 #endif

@@ -6,7 +6,7 @@
 #    By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/22 14:59:10 by Leny             ###   ########.fr        #
+#    Updated: 2026/05/22 15:29:30 by Leny             ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -35,7 +35,7 @@ SRC			=	main \
 				config/ServerConfig \
 				cgi/Cgi \
 				server/Connection \
-				server/EpollWrapper \
+				#server/EpollWrapper \
 				server/Server \
 				server/SessionManager \
 				server/Socket \

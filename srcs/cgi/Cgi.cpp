@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:25:13 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/18 18:32:14 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/22 17:37:27 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -79,11 +79,7 @@ int Cgi::execute(char **argv, char **envp)
         // fd_in[1] post for write, fd_out[0]listen the epoll
         close(fd_in[0]);
         close(fd_out[1]);
-        
-       // free_array(argv);
-        //free_array(envp);
-        
-        std::cout << "This is the father, CGI running with PID: " << pid << std::endl;
+        //std::cout << "This is the father, CGI running with PID: " << pid << std::endl;
         return pid;
     }
     return -1;
@@ -152,13 +148,14 @@ std::map<std::string, std::string> Cgi::setUpEnvironment(const Request& req)
     env["GATEWAY_INTERFACE"] = "CGI/1.1";
     env["SERVER_PROTOCOL"] = req.requestLine().version();
     env["SERVER_SOFTWARE"] = "Webserv/1.0";
-    env["REQUEST_METHOD"] = req.requestLine().method();
+    env["REQUEST_METHOD"] = "GET";
+    //env["REQUEST_METHOD"] = req.requestLine().method();
     env["CONTENT_LENGTH"] = ContentLenght;
-    env["PATH_TRANSLATED"] = "./www/cgi-bin/test.py";
-    env["QUERY_STRING"] = "" ;
+    env["PATH_TRANSLATED"] = "./www/cgi-bin/cgi_post.py";
+    env["QUERY_STRING"] = "Name=Leny&proyect=Webserv";
    
     env["PATH_INFO"] = "";
-    env["CONTENT_TYPE"] = "" ;
+    env["CONTENT_TYPE"] = "text/html" ;
     env["REMOTE_ADDR"] = "127.0.0.1";
     env["SCRIPT_NAME"] =  req.requestLine().target();
     env["SERVER_PORT"] = "8080" ;
@@ -166,3 +163,12 @@ std::map<std::string, std::string> Cgi::setUpEnvironment(const Request& req)
     return env;
 }
 
+int Cgi::getFdInWrite()
+{
+    return fd_in[1];
+}
+
+int Cgi::getFdOutRead()
+{
+    return fd_out[0];
+}
