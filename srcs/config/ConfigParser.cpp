@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/19 21:26:46 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/22 13:20:41 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -437,7 +437,6 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                     logError("Invalid upload_store", "", i+1);
                     return 1;
                 }
-                
             }
 
            else if (inLocation && tokens[i][j] == "cgi" )
@@ -465,7 +464,6 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                     logError("Invalid CGI", "", i+1);
                     return 1;
                 }
-                
             }
                         
             else if (inLocation && tokens[i][j] == "client_max_body_size" )
@@ -494,6 +492,8 @@ int ConfigParser::fillLocation(std::vector<std::vector<std::string> > &tokens, s
                     new_location.client_max_body_size = server.client_max_body_size;
                 if (new_location.upload_store == "")
                     new_location.upload_store = server.upload_store;
+                if (new_location.root == "")
+                    new_location.root = server.root;
                 server.locations.push_back(new_location);
                 return 0;
             }
@@ -580,7 +580,16 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                         return (1);
                     }
                 }
-             
+                else if (inServer && tokens[i][j] == "root")
+                {
+                    if(tokens[i].size() == 3)
+                        servers.back().root = tokens[i][j+1];
+                    else
+                    {
+                        logError("Invalid root", "", i+1);
+                        return 1;
+                    }
+                }
                 else if (tokens[i][j] == "client_max_body_size")
                 {
                     if (inServer && tokens[i].size() == 3)
@@ -691,6 +700,11 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
             logError("Missing upload_store value for server");
             return (1);
         }
+        if (servers.back().root == "")
+        {
+            logError("Missing root value for server ");
+            return (1);
+        }    
         return (0);
 }
 
