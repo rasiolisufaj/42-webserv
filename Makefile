@@ -6,7 +6,7 @@
 #    By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/12 17:02:23 by Leny             ###   ########.fr        #
+#    Updated: 2026/05/22 14:59:10 by Leny             ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -39,7 +39,7 @@ SRC			=	main \
 				server/Server \
 				server/SessionManager \
 				server/Socket \
-				utils/utils
+				utils/Logger \
 
 SRCS		= $(addprefix $(SRCDIR)/,$(addsuffix .cpp,$(SRC)))
 OBJ			= $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
