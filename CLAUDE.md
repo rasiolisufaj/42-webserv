@@ -37,10 +37,12 @@ The codebase is split across three active developers (feature branches per perso
 - `Headers` exposes `getHeader()`, `getContentLength()`, `wantsClose()`.
 
 **Server/event layer** (`srcs/server/`, `includes/server/`)
-- `EpollWrapper` owns the epoll fd and a `std::map<int, void*>` for fd→handler data. Key methods: `addFd`, `modifyFd`, `removeFd`, `wait`, `getData`.
+- `EpollWrapper` owns the epoll fd. Handler pointers are stored in `epoll_event.data.ptr` (not a separate map). Key methods: `addFd`, `modifyFd`, `removeFd`, `wait`, `getEvents`. Throws `std::runtime_error` on epoll syscall failure.
 - `IEventHandler` / `IServerCallback` are pure interfaces. `Socket` (listening socket) and `Connection` (client connection) implement `IEventHandler`. The `Server` class implements `IServerCallback` and drives the main event loop.
+- `IServerCallback` callbacks: `onNewConnection`, `onClientIN`, `onClientOUT`, `onCloseConnection`, `onCgiPipeIN`, `onCgiPipeOUT`.
 - `SessionManager` tracks active `Connection` objects.
 - CGI is handled by `CGIHandler` — it forks, sets environment variables, pipes body in via stdin, and reads CGI stdout back through epoll (non-blocking).
+- **Note:** `Server.cpp`, `Connection.cpp`, `CGIHandler.cpp`, and `SessionManager.cpp` are currently empty stubs. The server event loop is not yet wired to the config or HTTP layers.
 
 **Utilities** (`srcs/utils/`, `includes/utils/`)
 - `Logger` is a static utility class with levels DEBUG/INFO/WARNING/ERROR and ANSI color output. Use `Logger::log(Logger::INFO, msg)`.
@@ -97,4 +99,4 @@ curl -X DELETE http://localhost:8080/upload/file.txt
 curl -X UNKNOWN http://localhost:8080/  # expect 501
 ```
 
-The `tests/test.py` file is a placeholder for automated tests.
+Both `tests/test.py` and `tests/test_basic.sh` are placeholder stubs with no actual tests.

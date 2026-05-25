@@ -79,7 +79,10 @@ void EpollWrapper::removeFd(int fd)
 */
 int EpollWrapper::wait(int timeout_ms)
 {
-    int nfds = epoll_wait(this->_epoll_fd, &this->_events[0], MAX_EVENTS, timeout_ms);
+    int nfds;
+    do {
+        nfds = epoll_wait(this->_epoll_fd, &this->_events[0], MAX_EVENTS, timeout_ms);
+    } while (nfds == -1 && errno == EINTR);
     return nfds;
 }
 

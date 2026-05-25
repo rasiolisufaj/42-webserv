@@ -2,6 +2,7 @@
 #include "server/IServerCallback.hpp"
 #include "utils/Logger.hpp"
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -35,6 +36,10 @@ Socket::~Socket()
  */
 void Socket::setup()
 {
+  int port_num = std::atoi(this->_port.c_str());
+  if (port_num < 1 || port_num > 65535)
+    throw std::runtime_error("invalid port: " + this->_port);
+
   struct addrinfo hints, *res, *p;
   int status;
 
@@ -163,17 +168,17 @@ int Socket::getFd() const { return this->_fd; }
  */
 void Socket::handle(uint32_t event, IServerCallback &callback)
 {
-  int client_fd = -1;
-  if (event & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
+  if (event & (EPOLLERR | EPOLLHUP))
   {
     Logger::log(Logger::ERROR,
-                "On Socket: " + to_string(this->_fd) +
-                    " Epoll error/hangup event: " + to_string(event));
-    return;
-  }
-
-  while (true)
+      "On Socket: " + to_string(this->_fd) +
+      " Epoll error/hangup event: " + to_string(event));
+      return;
+    }
+    
+    while (true)
   {
+    int client_fd = -1;
     try
     {
       client_fd = this->acceptConnection();
