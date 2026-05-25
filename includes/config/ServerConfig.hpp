@@ -30,6 +30,7 @@ struct Location {
     client_max_body_size((size_t)-1)
     {
         allowed_methods.push_back("GET");
+        allowed_methods.push_back("HEAD");
     }
 };
 
@@ -37,7 +38,8 @@ class ServerConfig {
 public:
     int                         port;
     std::string                 host;
-    std::vector<std::string>    server_names;
+    std::string                 server_name;
+    std::string                 root;
     std::map<int, std::string>  error_pages;
     size_t                      client_max_body_size;
     size_t                      client_max_header_size;
