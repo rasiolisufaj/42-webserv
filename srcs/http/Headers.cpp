@@ -3,17 +3,19 @@
 /*                                                        :::      ::::::::   */
 /*   Headers.cpp                                        :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: kobe <kobe@student.42.fr>                  +#+  +:+       +#+        */
+/*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/06 13:05:23 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/12 13:09:24 by kobe             ###   ########.fr       */
+/*   Updated: 2026/05/20 11:11:46 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "http/Headers.hpp"
+#include "http/utils_http.hpp"
 #include <cstddef>
 #include <exception>
 #include <stdexcept>
+#include <limits>
 #include <map>
 
 /*
@@ -75,26 +77,7 @@ static std::string normalize_lws_inside(const std::string &s)
     return (result);
 }
 
-// ascii only!
-static std::string to_lower_ascii(const std::string &s)
-{
-    std::string result;
-    size_t i;
-    char c;
-
-    result = s;
-    i = 0;
-    while (i < result.size())
-    {
-        c = result[i];
-        if (c >= 'A' && c <= 'Z')
-            result[i] = c + 32;
-        i++;
-    }
-    return (result);
-}
-
-// control char
+// control char (\r \t \n \0)
 static bool is_ctl(char c)
 {
     unsigned char uc;
@@ -169,15 +152,14 @@ void Headers::parseLine(const std::string &line)
         throw(std::runtime_error("400 Bad Request: invalid header name"));
 
     key = to_lower_ascii(key);
-    value = trim_lws(value);
+    value = trim_lws(value); // supp all spaces
     value = normalize_lws_inside(value);
 
     // stock in the map(_fields)
-    // if two host or content-length =>error  | else if more same other header => header : value1, value2...
-    // PARSING CHOICE headers duplicate!
+    // if duplicate HOST or CONTENT-LENGTH =>error  | else if more same other header => header : value1, value2...
     if (_fields.find(key) != _fields.end())
     {
-        if (key == "host" || key == "content-length")
+        if (key == "host" || key == "content-length"  || key == "transfer-encoding")
             throw(std::runtime_error("400 Bad Request: duplicated header (host/content-length)"));
         _fields[key] += ", " + value;
     }
@@ -185,8 +167,7 @@ void Headers::parseLine(const std::string &line)
         _fields[key] = value;
 }
 
-
-//utils
+// utils
 bool Headers::hasHeader(const std::string &name) const { return (_fields.find(to_lower_ascii(name)) != _fields.end()); }
 
 std::string Headers::getHeader(const std::string &name) const
@@ -204,8 +185,10 @@ std::string Headers::getHeader(const std::string &name) const
 size_t Headers::getContentLength() const
 {
     std::string value;
-    size_t      i;
-    size_t      result;
+    size_t i;
+    size_t result;
+    size_t digit;
+    size_t max;
 
     if (!hasHeader("content-length"))
         return (0);
@@ -215,16 +198,60 @@ size_t Headers::getContentLength() const
         throw(std::runtime_error("400 Bad Request: invalid Content-Length"));
 
     result = 0;
+    max = std::numeric_limits<size_t>::max();
+
     i = 0;
     while (i < value.size())
     {
         if (value[i] < '0' || value[i] > '9')
             throw(std::runtime_error("400 Bad Request: invalid Content-Length"));
 
-        result = result * 10 + (value[i] - '0');
+        digit = value[i] - '0';
+
+        if (result > (max - digit) / 10)
+            throw(std::runtime_error("400 Bad Request: Content-Length too large"));
+
+        result = result * 10 + digit;
         i++;
     }
     return (result);
+}
+
+HostInfo Headers::getHost() const
+{
+    HostInfo info;
+    std::string value;
+    size_t pos;
+
+    value = getHeader("host");
+
+    if (value.empty())
+        throw(std::runtime_error("400 Bad Request: empty Host"));
+
+    pos = value.find(':');
+    if (pos == std::string::npos)
+    {
+        info.name = value;
+        info.port = "";
+    }
+    else
+    {
+        info.name = value.substr(0, pos);
+        info.port = value.substr(pos + 1);
+
+        if (info.name.empty() || info.port.empty())
+            throw(std::runtime_error("400 Bad Request: invalid Host"));
+
+        // Port: digits only
+        size_t i = 0;
+        while (i < info.port.size())
+        {
+            if (info.port[i] < '0' || info.port[i] > '9')
+                throw(std::runtime_error("400 Bad Request: invalid Host port"));
+            i++;
+        }
+    }
+    return (info);
 }
 
 bool Headers::wantsClose() const

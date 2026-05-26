@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: raisufaj <raisufaj@student.42.fr>          +#+  +:+       +#+         #
+#    By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/17 15:34:59 by raisufaj         ###   ########.fr        #
+#    Updated: 2026/05/26 10:30:06 by thodavid         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -31,6 +31,10 @@ SRC			=	main \
 				http/RequestLine \
 				http/Headers \
 				http/Request \
+				http/ChunkDecod \
+				http/RequestTarget \
+				http/utils_http \
+				http/RequestContext \
 				config/ConfigParser \
 				config/ServerConfig \
 				cgi/CGIHandler \

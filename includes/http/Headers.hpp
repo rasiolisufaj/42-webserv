@@ -3,16 +3,22 @@
 /*                                                        :::      ::::::::   */
 /*   Headers.hpp                                        :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: thodavid <thodavid@learner.42.tech>        +#+  +:+       +#+        */
+/*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/06 13:05:33 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/06 13:05:36 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/19 12:55:41 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #pragma once
 #include <map>
 #include <string>
+
+struct HostInfo
+{
+    std::string name;
+    std::string port;
+};
 
 class Headers
 {
@@ -25,5 +31,6 @@ public:
     std::string getHeader(const std::string& name) const;
     size_t      getContentLength() const;
     bool        wantsClose() const;
+    HostInfo    getHost() const;
 };
 
