@@ -78,3 +78,43 @@ int main(int ac, char **av)
     }
     return (EXIT_SUCCESS);
 }
+
+
+//e.g context using
+/*
+#include "http/Request.hpp"
+#include "http/RequestContext.hpp"
+#include <iostream>
+
+int main(void)
+{
+    Request request;
+    RequestContext ctx;
+
+    std::string raw =
+        "GET /index.html?x=1 HTTP/1.1\r\n"
+        "Host: site-a.com:8080\r\n"
+        "User-Agent: curl/8.5.0\r\n"
+        "\r\n";
+
+    request.parse(raw);
+
+    // Exemple : port réellement touché par la socket.
+    ctx.build(request, 8080);
+
+    std::cout << "local_port: " << ctx.localPort() << "\n";
+    std::cout << "host name: " << ctx.effectiveHost().name << "\n";
+    std::cout << "host port: " << ctx.effectiveHost().port << "\n";
+    std::cout << "method: " << ctx.method() << "\n";
+    std::cout << "target: " << ctx.target() << "\n";
+    std::cout << "path: " << ctx.path() << "\n";
+    std::cout << "query: " << ctx.query() << "\n";
+    std::cout << "body size: " << ctx.bodySize() << "\n";
+
+    if (ctx.headers().hasHeader("user-agent"))
+        std::cout << "user-agent: " << ctx.headers().getHeader("user-agent") << "\n";
+
+    return (0);
+}
+
+*/
