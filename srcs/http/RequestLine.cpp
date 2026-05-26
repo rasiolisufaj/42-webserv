@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/05 15:43:43 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/21 10:47:30 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/26 08:38:23 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -137,7 +137,6 @@ static bool is_absolute_uri(const std::string &target)
 {
     if (http_https(target, "http://"))
         return (true);
-    // no need but easy to check
     if (http_https(target, "https://"))
         return (true);
     return (false);
@@ -162,21 +161,25 @@ static ParsedTarget parse_absolute_uri(const std::string &uri)
     slash_pos = uri.find('/', authority_start);
     query_pos = uri.find('?', authority_start);
 
+    //http://site-a.com
     if (slash_pos == std::string::npos && query_pos == std::string::npos)
     {
         authority_end = uri.size();
         result.target = "/";
     }
+    //http://site-a.com?q=xxx => http://site-a.com/?q=xxx
     else if (slash_pos == std::string::npos)
     {
         authority_end = query_pos;
         result.target = "/" + uri.substr(query_pos);
     }
+    //http://site-a.com/index.html
     else if (query_pos == std::string::npos)
     {
         authority_end = slash_pos;
         result.target = uri.substr(slash_pos);
     }
+    //http://site-a.com?redirect=/admin
     else if (query_pos < slash_pos)
     {
         authority_end = query_pos;
