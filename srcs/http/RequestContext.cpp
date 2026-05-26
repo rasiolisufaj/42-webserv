@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/26 10:09:20 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/26 10:17:04 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/05/26 11:33:30 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -74,17 +74,7 @@ static bool is_valid_port(const std::string &port)
     return (true);
 }
 
-/*
-    Parse a Host-like authority value.
 
-    Examples:
-        "site-a.com"       -> name = "site-a.com", port = ""
-        "site-a.com:8080"  -> name = "site-a.com", port = "8080"
-        "localhost:8000"   -> name = "localhost", port = "8000"
-
-    TODO:
-        IPv6 authority like "[::1]:8080" is not supported yet.
-*/
 static HostInfo parse_host_authority(const std::string &value)
 {
     HostInfo info;
@@ -122,13 +112,6 @@ RequestContext::RequestContext()
     _use_authority = false;
 }
 
-/*
-    Build a context usable by the config matcher.
-
-    RFC 2616 §5.2:
-    - if Request-URI is absoluteURI, use authority from Request-Line
-    - otherwise, use Host header
-*/
 void RequestContext::build(const Request &request, int local_port)
 {
     _request = &request;

@@ -124,7 +124,7 @@ int main(void)
 
     request.parse(raw);
 
-    // Exemple : port réellement touché par la socket.
+    // e.g : port réellement touché par la socket
     ctx.build(request, 8080);
 
     std::cout << "local_port: " << ctx.localPort() << "\n";
