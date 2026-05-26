@@ -39,8 +39,9 @@ int main(int ac, char **av)
         /*THOMA'S PART*/
         /**************/
         std::cout << "\n+++REQUEST PARSER LOG+++\n";
-        std::string good_requestTest = "POST /cgi-bin/test.py HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello";
-        std::string bad_requestTest = "POST /cgi-bin/test.py HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\nhello";
+        std::string good_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello";
+        std::string bad_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 50\r\nConnection: close\r\n\rhello  ";
+        
         /*TEST REQUEST*/
         Request rqs;
         //rqs.parse(good_requestTest);
@@ -54,6 +55,8 @@ int main(int ac, char **av)
         Headers hd;
         hd = rqs.headers();
         std::cout << hd.getHeader("host") << "\n> ";   //   => "localhost:8080"
+        std::cout << hd.getHost().name << "\n> ";
+        std::cout << hd.getHost().port << "\n> ";
         std::cout << hd.getContentLength() << "\n> ";   //   => 5
         std::cout << hd.wantsClose() << "\n> ";         //   => true
 
@@ -142,3 +145,42 @@ int main(int ac, char **av)
 //     Logger::log(Logger::WARNING, "This WARNING message should appear.");
 //     Logger::log(Logger::ERROR, "This ERROR message should appear.");
 // }
+
+//e.g context using
+/*
+#include "http/Request.hpp"
+#include "http/RequestContext.hpp"
+#include <iostream>
+
+int main(void)
+{
+    Request request;
+    RequestContext ctx;
+
+    std::string raw =
+        "GET /index.html?x=1 HTTP/1.1\r\n"
+        "Host: site-a.com:8080\r\n"
+        "User-Agent: curl/8.5.0\r\n"
+        "\r\n";
+
+    request.parse(raw);
+
+    // e.g : port réellement touché par la socket
+    ctx.build(request, 8080);
+
+    std::cout << "local_port: " << ctx.localPort() << "\n";
+    std::cout << "host name: " << ctx.effectiveHost().name << "\n";
+    std::cout << "host port: " << ctx.effectiveHost().port << "\n";
+    std::cout << "method: " << ctx.method() << "\n";
+    std::cout << "target: " << ctx.target() << "\n";
+    std::cout << "path: " << ctx.path() << "\n";
+    std::cout << "query: " << ctx.query() << "\n";
+    std::cout << "body size: " << ctx.bodySize() << "\n";
+
+    if (ctx.headers().hasHeader("user-agent"))
+        std::cout << "user-agent: " << ctx.headers().getHeader("user-agent") << "\n";
+
+    return (0);
+}
+
+*/

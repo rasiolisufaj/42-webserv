@@ -6,7 +6,7 @@
 #    By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/22 15:29:30 by Leny             ###   ########.fr        #
+#    Updated: 2026/05/26 14:24:37 by Leny             ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -31,6 +31,10 @@ SRC			=	main \
 				http/RequestLine \
 				http/Headers \
 				http/Request \
+				http/ChunkDecod \
+				http/RequestTarget \
+				http/utils_http \
+				http/RequestContext \
 				config/ConfigParser \
 				config/ServerConfig \
 				cgi/Cgi \

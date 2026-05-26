@@ -17,5 +17,5 @@ class IEventHandler
             * - event: bitmask of events (e.g., EPOLLIN, EPOLLOUT) that occurred on the associated file descriptor
             * - callback: pointer to an IServerCallback implementation to call based on the event type
         */
-        virtual void handle(uint32_t event, IServerCallback *callback) = 0;
+        virtual void handle(uint32_t event, IServerCallback &callback) = 0;
 };

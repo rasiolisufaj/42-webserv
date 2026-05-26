@@ -1,5 +1,4 @@
 #pragma once
-#include <map>
 #include <vector>
 #include <stdint.h>
 #include <sys/epoll.h>
@@ -13,36 +12,30 @@ class EpollWrapper
         int _epoll_fd;
         static const int MAX_EVENTS = 1024;
         std::vector<struct epoll_event> _events;
-        std::map<int, void *> _fd_to_data;
     
     public:
         EpollWrapper();
         ~EpollWrapper();
 
         /*
-            * Registers an fd in the epoll instance and associates user data with it.
+            * Registers an fd in the epoll instance with a handler pointer.
             *
             * Parameters:
             * - fd: file descriptor to watch
             * - events: epoll event mask (EPOLLIN/EPOLLOUT/...)
-            * - data: pointer to an event handler or user state (stored separately)
+            * - data: pointer to an event handler (stored in epoll_event.data.ptr)
         */
         void addFd(int fd, uint32_t events, void *data);
 
         /*
-            * Modifies the events and/or user data associated with an already registered fd.
+            * Modifies the events and/or handler pointer associated with an already registered fd.
         */
         void modifyFd(int fd, uint32_t events, void *data);
 
         /*
-            * Unregisters an fd from the epoll instance and removes its associated user data.
+            * Unregisters an fd from the epoll instance.
         */
         void removeFd(int fd);
-
-        /*
-            * Retrieves the user data pointer associated with a registered fd, or NULL if the fd is not registered.
-        */
-        void *getData(int fd) const;
 
         /*
             * Waits for epoll events.
