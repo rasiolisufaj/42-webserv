@@ -2,6 +2,8 @@
 #include "http/Request.hpp"
 #include "cgi/Cgi.hpp"
 #include <fcntl.h>
+#include "http/RequestContext.hpp"
+#include <iostream>
 
 int main(int ac, char **av)
 {
@@ -20,62 +22,68 @@ int main(int ac, char **av)
 
         if (Parser.parseConfig(av[1]) != 0)
             return (EXIT_FAILURE);
-
-        // const std::vector<ServerConfig> &all_servers = Parser.getServers();
-
-        // for (size_t i = 0; i < all_servers.size(); i++)
-        // {
-        //     all_servers[i].print_servers();
-        // }
-
+        
+        const std::vector<ServerConfig> &all_servers = Parser.getServers();
+        const ServerConfig &my_server = all_servers[0];
+        const Location &loc = my_server.locations[0];
+        
         /***************/
         /*RASIOL'S PART*/
         /***************/
 
         //....
 
-
         /**************/
         /*THOMA'S PART*/
         /**************/
-        std::cout << "\n+++REQUEST PARSER LOG+++\n";
-        std::string good_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello";
-        std::string bad_requestTest = "POST /login HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 50\r\nConnection: close\r\n\rhello  ";
+     
+    Request request;
+    RequestContext ctx;
+
+    std::string raw =
+        "GET /index.html?x=1 HTTP/1.1\r\n"
+        "Host: site-a.com:8080\r\n"
+        "User-Agent: curl/8.5.0\r\n"
+        "\r\n";
+
+    std::string raw_get =
+    "GET /cgi-bin/cgi_post.py?Name=Leny&proyect=Webserv HTTP/1.1\r\n"
+    "Host: localhost:8080\r\n"
+    "User-Agent: curl/8.5.0\r\n"
+    "\r\n"; // Termina con doble salto de línea, vacío por abajo
+
+    std::string raw_post =
+    "POST /cgi-bin/cgi_post.py HTTP/1.1\r\n"
+    "Host: localhost:8080\r\n"
+    "Content-Length: 25\r\n" // Crucial: "Name=Leny&proyect=Webserv" mide 25 bytes
+    "Content-Type: application/x-www-form-urlencoded\r\n"
+    "\r\n" // <--- Este doble salto de línea separa los headers del cuerpo
+    "Name=Leny&proyect=Webserv"; // El cuerpo real que leerá el write()
         
-        /*TEST REQUEST*/
-        Request rqs;
-        //rqs.parse(good_requestTest);
-        rqs.parse(good_requestTest);
+    request.parse(raw_get);
 
-        RequestLine rl;
-        rl = rqs.requestLine();
-        std::cout << rl.target() << "\n> ";            //   => "/login"
-        std::cout << rl.version() << "\n> ";           //   => "HTTP/1.1"
+    // e.g : port réellement touché par la socket
+    ctx.build(request, 8080);
 
-        Headers hd;
-        hd = rqs.headers();
-        std::cout << hd.getHeader("host") << "\n> ";   //   => "localhost:8080"
-        std::cout << hd.getHost().name << "\n> ";
-        std::cout << hd.getHost().port << "\n> ";
-        std::cout << hd.getContentLength() << "\n> ";   //   => 5
-        std::cout << hd.wantsClose() << "\n> ";         //   => true
+    std::cout << "local_port: " << ctx.localPort() << "\n";
+    std::cout << "host name: " << ctx.effectiveHost().name << "\n";
+    std::cout << "host port: " << ctx.effectiveHost().port << "\n";
+    std::cout << "method: " << ctx.method() << "\n";
+    std::cout << "target: " << ctx.target() << "\n";
+    std::cout << "path: " << ctx.path() << "\n";
+    std::cout << "query: " << ctx.query() << "\n";
+    std::cout << "body size: " << ctx.bodySize() << "\n";
 
-        std::cout << rqs.body() << '\n'; // => "hello"
+    if (ctx.headers().hasHeader("user-agent"))
+        std::cout << "user-agent: " << ctx.headers().getHeader("user-agent") << "\n";
 
-            
-        /*
-        rl.parse("GET /index.html HTTP/1.1"); //valide
-        rl.parse("GET index.html HTTP/1.1"); //invalide
-        
-        hd.parseLine("Host: api.interactivtrading.com"); //valide
-        hd.parseLine("Ho st: api.interactivtrading.com"); //invalide
-        */
+
 
         //CGI PART
        std::cout << "\n+++CGI LOG+++\n";
        Cgi my_cgi;
-       Location loc;
-       std::map<std::string, std::string> map_env = my_cgi.setUpEnvironment(rqs);
+       
+       std::map<std::string, std::string> map_env = my_cgi.setUpEnvironment(ctx, loc);
         char **envp = my_cgi.convertMapToEnvp(map_env);
         char **argv = my_cgi.setupArgv(loc, map_env);
         pid_t pid = my_cgi.execute(argv, envp);
@@ -181,6 +189,6 @@ int main(void)
         std::cout << "user-agent: " << ctx.headers().getHeader("user-agent") << "\n";
 
     return (0);
-}
+}*/
 
-*/
+

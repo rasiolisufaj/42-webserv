@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:25:13 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/26 14:20:56 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/26 16:27:53 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -137,31 +137,31 @@ char **Cgi::convertMapToEnvp(std::map<std::string, std::string> &envMap)
     return envp;
 }
 
-//std::map<std::string, std::string> Cgi::setUpEnvironment(const Request& req, const Location& loc)
-std::map<std::string, std::string> Cgi::setUpEnvironment(const Request& req)
+std::map<std::string, std::string> Cgi::setUpEnvironment(const RequestContext& ctx, const Location& loc)
 {
     std::map<std::string, std::string> env;
     std::stringstream ss;
 
-    ss << req.headers().getContentLength();
+    ss << ctx.bodySize();
     std::string ContentLenght ;
     ss >> ContentLenght;
     
     env["GATEWAY_INTERFACE"] = "CGI/1.1";
-    env["SERVER_PROTOCOL"] = req.requestLine().version();
+    env["SERVER_PROTOCOL"] = ctx.request().requestLine().version();
     env["SERVER_SOFTWARE"] = "Webserv/1.0";
-   // env["REQUEST_METHOD"] = "GET";
-    env["REQUEST_METHOD"] = req.requestLine().method();
+    env["REQUEST_METHOD"] = ctx.method();
     env["CONTENT_LENGTH"] = ContentLenght;
-    env["PATH_TRANSLATED"] = "./www/cgi-bin/cgi_post.py";
-    env["QUERY_STRING"] = "Name=Leny&proyect=Webserv";
-   
+    env["PATH_TRANSLATED"] = loc.root + ctx.path();
+    env["QUERY_STRING"] = ctx.query();
     env["PATH_INFO"] = "";
-    env["CONTENT_TYPE"] = "text/html" ;
+    if (ctx.headers().hasHeader("Content-Type"))
+        env["CONTENT_TYPE"] = ctx.headers().getHeader("Content-Type");
+    else
+        env["CONTENT_TYPE"] = "";    
     env["REMOTE_ADDR"] = "127.0.0.1";
-    env["SCRIPT_NAME"] =  req.requestLine().target();
-    env["SERVER_PORT"] = "8080" ;
-    env["SERVER_NAME"] = "localhost" ;
+    env["SCRIPT_NAME"] = ctx.path();
+    env["SERVER_PORT"] = ctx.effectiveHost().port ;
+    env["SERVER_NAME"] = ctx.effectiveHost().name ;
     return env;
 }
 
