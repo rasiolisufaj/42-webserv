@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:26:03 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/22 15:18:26 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/26 14:20:48 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -30,6 +30,7 @@ class Cgi{
         Cgi();
         ~Cgi();
         void print_env(std::map<std::string, std::string> env_print) const;
+        //std::map<std::string, std::string> setUpEnvironment(const Request& req, const Location& loc);
         std::map<std::string, std::string> setUpEnvironment(const Request& req);
         char **setupArgv(const Location &loc, std::map<std::string, std::string> &envMap);
         char **convertMapToEnvp(std::map<std::string, std::string> &envMap);
