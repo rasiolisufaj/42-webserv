@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:25:13 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/26 16:27:53 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/26 19:47:10 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -87,13 +87,24 @@ int Cgi::execute(char **argv, char **envp)
 
 char **Cgi::setupArgv(const Location &loc, std::map<std::string, std::string> &envMap)
 {
-    (void)loc;
+    std::string extension = envMap["PATH_TRANSLATED"];
+    size_t dotPos = extension.rfind('.');
+    if (dotPos == std::string::npos)
+    {
+        return NULL;
+    }
+    extension = extension.substr(dotPos);
+    
+    std::map<std::string, std::string>::const_iterator it;
+    it = loc.cgi.find(extension);
+    if(it == loc.cgi.end())
+        return NULL;
+
     char **argv =  new char*[3];
     if(!argv)
         return NULL;
     argv[2] = NULL;
-    //argv[0] = strdup(loc.cgi)
-    argv[0] = strdup("/opt/homebrew/bin/python3");
+    argv[0] = strdup(it->second.c_str());
     if(!argv[0])
     {
         delete[] argv;
