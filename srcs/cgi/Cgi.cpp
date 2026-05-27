@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:25:13 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/26 19:47:10 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/27 09:59:23 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -35,6 +35,10 @@ void Cgi::free_array(char **array)
 
 int Cgi::execute(char **argv, char **envp)
 {
+    if (!argv || !envp)
+    {
+        return -1;
+    }
     if (pipe(fd_in) < 0)
         return -1;
     else
@@ -60,7 +64,7 @@ int Cgi::execute(char **argv, char **envp)
         //child
         dup2(fd_in[0], STDIN_FILENO);
         dup2(fd_out[1], STDOUT_FILENO);
-
+        dup2(fd_out[1], STDERR_FILENO);
         close(fd_in[0]);
         close(fd_in[1]);
         close(fd_out[0]);
@@ -69,6 +73,8 @@ int Cgi::execute(char **argv, char **envp)
         if (execve(argv[0], argv, envp) == -1)
         {
             perror("Error en execve");
+            free_array(argv);
+            free_array(envp);
             exit(1);
         }
     }
@@ -79,7 +85,6 @@ int Cgi::execute(char **argv, char **envp)
         // fd_in[1] post for write, fd_out[0]listen the epoll
         close(fd_in[0]);
         close(fd_out[1]);
-        //std::cout << "This is the father, CGI running with PID: " << pid << std::endl;
         return pid;
     }
     return -1;
