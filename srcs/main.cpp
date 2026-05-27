@@ -59,8 +59,23 @@ int main(int ac, char **av)
     "Content-Type: application/x-www-form-urlencoded\r\n"
     "\r\n" // <--- Este doble salto de línea separa los headers del cuerpo
     "Hello  this is  the  body"; // El cuerpo real que leerá el write()
+
+    std::string raw_sum =
+    "POST /cgi-bin/sum.py HTTP/1.1\r\n"
+    "Host: localhost:8080\r\n"
+    "Content-Length: 9\r\n" // "n1=5&n2=7" son 8 caracteres
+    "Content-Type: application/x-www-form-urlencoded\r\n"
+    "\r\n"
+    "n1=5&n2=7";
+
+    std::string raw_bash =
+    "GET /cgi-bin/status.sh HTTP/1.1\r\n"
+    "Host: localhost:8080\r\n"
+    "User-Agent: curl/8.5.0\r\n"
+    "\r\n";
+
         
-    request.parse(raw_get);
+    request.parse(raw_bash);
 
     // e.g : port réellement touché par la socket
     ctx.build(request, 8080);
@@ -73,6 +88,7 @@ int main(int ac, char **av)
     std::cout << "path: " << ctx.path() << "\n";
     std::cout << "query: " << ctx.query() << "\n";
     std::cout << "body size: " << ctx.bodySize() << "\n";
+    std::cout << "Body: " << ctx.request().body() << "\n";
 
     if (ctx.headers().hasHeader("user-agent"))
         std::cout << "user-agent: " << ctx.headers().getHeader("user-agent") << "\n";
@@ -87,6 +103,11 @@ int main(int ac, char **av)
     pid_t pid = my_cgi.execute(argv, envp);
     if (pid > 0)
     {
+        std::string body_data = ctx.request().body();
+        if (!body_data.empty())
+        {
+            write(my_cgi.getFdInWrite(), body_data.c_str(), body_data.length());
+        }
         close(my_cgi.getFdInWrite()) ;
         char buffer[4096];
         int bytes_read;
