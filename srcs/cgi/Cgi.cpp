@@ -6,14 +6,14 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/12 16:25:13 by Leny              #+#    #+#             */
-/*   Updated: 2026/05/27 09:59:23 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/28 10:23:47 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "cgi/Cgi.hpp"
 
-Cgi::Cgi(){
-}
+Cgi::Cgi(){}
+
 Cgi::~Cgi(){}
 
 void Cgi::print_env(std::map<std::string, std::string> env_print) const

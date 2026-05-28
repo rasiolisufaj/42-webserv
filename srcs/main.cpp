@@ -50,32 +50,32 @@ int main(int ac, char **av)
     "GET /cgi-bin/cgi_post.py?Name=Leny&proyect=Webserv HTTP/1.1\r\n"
     "Host: localhost:8080\r\n"
     "User-Agent: curl/8.5.0\r\n"
-    "\r\n"; // Termina con doble salto de línea, vacío por abajo
+    "\r\n"; 
 
     std::string raw_post =
     "POST /cgi-bin/cgi_post.py HTTP/1.1\r\n"
     "Host: localhost:8080\r\n"
-    "Content-Length: 25\r\n" // Crucial: "Name=Leny&proyect=Webserv" mide 25 bytes
+    "Content-Length: 25\r\n"
     "Content-Type: application/x-www-form-urlencoded\r\n"
-    "\r\n" // <--- Este doble salto de línea separa los headers del cuerpo
-    "Hello  this is  the  body"; // El cuerpo real que leerá el write()
+    "\r\n" 
+    "Hello  this is  the  body"; 
 
     std::string raw_sum =
     "POST /cgi-bin/sum.py HTTP/1.1\r\n"
     "Host: localhost:8080\r\n"
-    "Content-Length: 9\r\n" // "n1=5&n2=7" son 8 caracteres
+    "Content-Length: 9\r\n" 
     "Content-Type: application/x-www-form-urlencoded\r\n"
     "\r\n"
     "n1=5&n2=7";
 
-    std::string raw_bash =
+    std::string raw_bash_status =
     "GET /cgi-bin/status.sh HTTP/1.1\r\n"
     "Host: localhost:8080\r\n"
     "User-Agent: curl/8.5.0\r\n"
     "\r\n";
 
         
-    request.parse(raw_bash);
+    request.parse(raw_sum);
 
     // e.g : port réellement touché par la socket
     ctx.build(request, 8080);
@@ -117,7 +117,7 @@ int main(int ac, char **av)
             buffer[bytes_read] = '\0';
             cgi_response += buffer;
         }
-        std::cout << "\n--- [Padre] Respuesta del CGI recibida: ---\n";
+        std::cout << "\n--- [Father] Response from CGI : ---\n";
         std::cout << cgi_response << std::endl;
         std::cout << "-------------------------------------------\n";
         close(my_cgi.getFdOutRead());
