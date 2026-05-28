@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+         #
+#    By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/26 10:30:06 by thodavid         ###   ########.fr        #
+#    Updated: 2026/05/26 14:24:37 by Leny             ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -37,9 +37,9 @@ SRC			=	main \
 				http/RequestContext \
 				config/ConfigParser \
 				config/ServerConfig \
-				cgi/CGIHandler \
+				cgi/Cgi \
 				server/Connection \
-				server/EpollWrapper \
+				#server/EpollWrapper \
 				server/Server \
 				server/SessionManager \
 				server/Socket \

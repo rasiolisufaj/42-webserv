@@ -25,7 +25,7 @@ void ServerConfig::print_servers() const
     std::cout << "client_max_header_size: " << this->client_max_header_size << std::endl;
     for (std::map<int, std::string>::const_iterator it = error_pages.begin(); it != error_pages.end(); ++it) 
     {
-    std::cout << "error_page : " << it->first << " " << it->second << std::endl;
+        std::cout << "error_page : " << it->first << " " << it->second << std::endl;
     }
     std::cout << "upload_store: " << this->upload_store << std::endl;
 
