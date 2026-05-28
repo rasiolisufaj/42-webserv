@@ -15,7 +15,7 @@ make clean    # remove object files
 make fclean   # remove object files and binary
 ```
 
-**Compiler flags:** `-std=c++98 -Wall -Wextra -Werror`
+**Compiler flags:** `-std=c++98 -Wall -Wextra -Werror -MMD -MP`
 
 **Run the server:**
 ```bash
@@ -26,27 +26,44 @@ Example config files are in `config/`. The binary takes exactly one argument (th
 
 ## Architecture
 
-The codebase is split across three active developers (feature branches per person):
+Three developers, each owns a layer:
 
-**Config layer** (`srcs/config/`, `includes/config/`)
-- `ConfigParser` reads and tokenizes the `.conf` file, validates directives, then populates `std::vector<ServerConfig>`.
-- `ServerConfig` holds per-server settings; each contains a `std::vector<Location>` with per-route settings (root, methods, CGI map, upload_store, etc.).
+- **Leny** (`lellanos`) — config layer (`srcs/config/`, `includes/config/`)
+- **Thomas** (`thodavid`) — HTTP parsing layer (`srcs/http/`, `includes/http/`)
+- **Rasiol** (`risufaj`) — server/event layer (`srcs/server/`, `includes/server/`)
 
-**HTTP parsing layer** (`srcs/http/`, `includes/http/`)
-- `Request::parse()` accepts a full raw HTTP string and populates `RequestLine` (method/target/version) and `Headers` (case-normalized field map).
-- `Headers` exposes `getHeader()`, `getContentLength()`, `wantsClose()`.
+### Config layer
 
-**Server/event layer** (`srcs/server/`, `includes/server/`)
-- `EpollWrapper` owns the epoll fd. Handler pointers are stored in `epoll_event.data.ptr` (not a separate map). Key methods: `addFd`, `modifyFd`, `removeFd`, `wait`, `getEvents`. Throws `std::runtime_error` on epoll syscall failure.
-- `IEventHandler` / `IServerCallback` are pure interfaces. `Socket` (listening socket) and `Connection` (client connection) implement `IEventHandler`. The `Server` class implements `IServerCallback` and drives the main event loop.
-- `IServerCallback` callbacks: `onNewConnection`, `onClientIN`, `onClientOUT`, `onCloseConnection`, `onCgiPipeIN`, `onCgiPipeOUT`.
-- `SessionManager` tracks active `Connection` objects.
-- CGI is handled by `CGIHandler` — it forks, sets environment variables, pipes body in via stdin, and reads CGI stdout back through epoll (non-blocking).
-- **Note:** `Server.cpp`, `Connection.cpp`, `CGIHandler.cpp`, and `SessionManager.cpp` are currently empty stubs. The server event loop is not yet wired to the config or HTTP layers.
+- `ConfigParser` reads and tokenizes the `.conf` file, validates directives, then populates `std::vector<ServerConfig>`. Entry point: `ConfigParser::parseConfig(path)`.
+- `ServerConfig` holds per-server settings (`port`, `host`, `server_name`, `root`, `error_pages`, size limits, `upload_store`). Each contains a `std::vector<Location>` with per-route settings (`root`, `allowed_methods`, `autoindex`, `cgi` map, `upload_store`, `return_code`/`return_redir`). `client_max_body_size` defaults to `(size_t)-1` (unlimited) if absent.
 
-**Utilities** (`srcs/utils/`, `includes/utils/`)
-- `Logger` is a static utility class with levels DEBUG/INFO/WARNING/ERROR and ANSI color output. Use `Logger::log(Logger::INFO, msg)`.
-- `to_string<T>()` is a C++98 substitute for `std::to_string`, defined in `Logger.hpp`.
+### HTTP parsing layer
+
+- `RequestLine` parses the first line into `method`, `target`, `version`, and `authority`. Internally delegates target parsing to `RequestTarget`.
+- `RequestTarget` parses a URI target into `path` and `query`.
+- `Headers` holds a case-normalized `std::map<std::string,std::string>`. Key methods: `parseLine()`, `getHeader()`, `hasHeader()`, `getContentLength()`, `wantsClose()`, `getHost()` (returns `HostInfo{name, port}`).
+- `Request` ties the above together: `Request::parse(fullRequest)` populates `_requestLine`, `_headers`, and `_body`.
+- `RequestContext` is the bridge to routing. Call `ctx.build(request, local_port)` to resolve the effective host (`effectiveHost()`), normalized `method()`, `path()`, `query()`, and `bodySize()`. The server will use this to match `ServerConfig`/`Location`.
+- `ChunkDecoder` decodes `Transfer-Encoding: chunked` bodies via `clean_body_chunk(chunked_body)`. Max body size is configurable (default 100 MB).
+- `utils_http.hpp` provides free functions: `to_lower_ascii()` and `hex_value()`.
+
+### Server/event layer
+
+- `EpollWrapper` owns the epoll fd. Handler pointers are stored in `epoll_event.data.ptr` (not a separate map). Key methods: `addFd`, `modifyFd`, `removeFd`, `wait`, `getEvents`. Throws `std::runtime_error` on epoll syscall failure. `wait()` retries on `EINTR`.
+- `IEventHandler` — pure interface. `virtual void handle(uint32_t event, IServerCallback &callback)`. Both listening sockets and connections implement this.
+- `IServerCallback` — pure interface implemented by `Server`. Callbacks: `onNewConnection`, `onClientIN`, `onClientOUT`, `onCloseConnection`, `onCgiPipeIN`, `onCgiPipeOUT`.
+- `Socket` (implemented) — listening socket, implements `IEventHandler`. `setup()` creates, binds, and sets `O_NONBLOCK` + `FD_CLOEXEC`. `handle()` drains the accept queue in a loop and calls `callback.onNewConnection()`.
+
+**Current stub status** — these `.cpp` files exist but are empty; header files for them do not yet exist in `includes/`:
+- `srcs/server/Server.cpp` — main event loop, drives `EpollWrapper::wait()` and dispatches to `IEventHandler::handle()`
+- `srcs/server/Connection.cpp` — per-client state machine (read buffer → `Request::parse` → build response → write)
+- `srcs/server/SessionManager.cpp` — owns/tracks active `Connection` objects
+- `srcs/cgi/CGIHandler.cpp` — forks, sets CGI env vars, pipes body via stdin, reads stdout through epoll
+
+### Utilities
+
+- `Logger` — static class with levels `DEBUG/INFO/WARNING/ERROR` and ANSI color output. Use `Logger::log(Logger::INFO, msg)`. `Logger::setLogLevel()` suppresses messages below the threshold.
+- `to_string<T>()` — C++98 substitute for `std::to_string`, defined in `Logger.hpp`. Used throughout the codebase.
 
 ## Config File Syntax
 
@@ -75,18 +92,20 @@ server {
 - Directives end with `;`. Location blocks use `{}`.
 - `client_max_body_size` / `client_max_header_size` are in bytes and inherited from server if absent in location.
 - `cgi` maps a file extension to an executable path; multiple `cgi` lines are allowed per location.
+- Default `allowed_methods` if unset: `GET HEAD`.
 
 ## Key Constraints (42 rules)
 
 - **C++98 only** — no `auto`, range-for, `std::to_string`, lambdas, or C++11 headers.
 - **Single epoll loop** — all sockets (listening + client + CGI pipes) go through one `EpollWrapper::wait()` call.
-- `fork()` is only permitted inside `CGIHandler` for CGI execution.
+- `fork()` is only permitted inside `CGIHandler` for CGI execution. All fds must have `FD_CLOEXEC` set before forking.
 - All sockets must be set non-blocking (`O_NONBLOCK`).
 - The server must never crash or hang regardless of input.
 
 ## Static Content & Test Files
 
 - `www/` contains test HTML, error pages, CSS/JS, and `upload_store/`.
+- `www/cgi-bin/` contains Python CGI scripts for manual testing.
 - `config/` contains example `.conf` files: `default.conf`, `webserv.conf`, `multipleServers.conf`, `tester.conf`, `pretty.conf`, `siege.conf`.
 
 ## Testing
