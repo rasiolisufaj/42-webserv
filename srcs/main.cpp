@@ -4,6 +4,9 @@
 #include <fcntl.h>
 #include "http/RequestContext.hpp"
 #include <iostream>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <stdio.h>
 
 int main(int ac, char **av)
 {

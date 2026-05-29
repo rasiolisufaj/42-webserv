@@ -28,7 +28,7 @@ Example config files are in `config/`. The binary takes exactly one argument (th
 
 Three developers, each owns a layer:
 
-- **Leny** (`lellanos`) — config layer (`srcs/config/`, `includes/config/`)
+- **Leny** (`lellanos`) — config layer (`srcs/config/`, `includes/config/`) + CGI layer (`srcs/cgi/`, `includes/cgi/`)
 - **Thomas** (`thodavid`) — HTTP parsing layer (`srcs/http/`, `includes/http/`)
 - **Rasiol** (`risufaj`) — server/event layer (`srcs/server/`, `includes/server/`)
 
@@ -47,18 +47,39 @@ Three developers, each owns a layer:
 - `ChunkDecoder` decodes `Transfer-Encoding: chunked` bodies via `clean_body_chunk(chunked_body)`. Max body size is configurable (default 100 MB).
 - `utils_http.hpp` provides free functions: `to_lower_ascii()` and `hex_value()`.
 
+### CGI layer
+
+- `Cgi` (`srcs/cgi/Cgi.cpp`, `includes/cgi/Cgi.hpp`) — **implemented**. Forks a child process via `execute(argv, envp)`, wires up two pipes (stdin/stdout), and returns the child `pid_t` to the caller. The parent retains `getFdInWrite()` (write body to CGI) and `getFdOutRead()` (read CGI response). Key methods:
+  - `setUpEnvironment(ctx, loc)` — builds the CGI env map from a `RequestContext` and `Location`.
+  - `setupArgv(loc, envMap)` — resolves the interpreter from `loc.cgi` keyed by file extension, returns `char**[interpreter, script_path, NULL]`.
+  - `convertMapToEnvp(envMap)` — converts `std::map` to `char**` for `execve`.
+  - `execute(argv, envp)` — creates pipes, `fork()`s, `dup2()`s, calls `execve` in child; parent closes unused ends and returns `pid`.
+  - `free_array(char**)` — frees heap-allocated `char**` arrays.
+- `CgiJob` (`srcs/cgi/CgiJob.hpp`) — plain struct holding job parameters: `interpreter`, `script_path`, `working_dir`, `method`, `query_string`, `url_path`, `body` (`std::vector<char>`), `env` map. Intended to decouple the HTTP layer from the CGI executor (not yet wired into the event loop).
+
 ### Server/event layer
 
 - `EpollWrapper` owns the epoll fd. Handler pointers are stored in `epoll_event.data.ptr` (not a separate map). Key methods: `addFd`, `modifyFd`, `removeFd`, `wait`, `getEvents`. Throws `std::runtime_error` on epoll syscall failure. `wait()` retries on `EINTR`.
 - `IEventHandler` — pure interface. `virtual void handle(uint32_t event, IServerCallback &callback)`. Both listening sockets and connections implement this.
-- `IServerCallback` — pure interface implemented by `Server`. Callbacks: `onNewConnection`, `onClientIN`, `onClientOUT`, `onCloseConnection`, `onCgiPipeIN`, `onCgiPipeOUT`.
-- `Socket` (implemented) — listening socket, implements `IEventHandler`. `setup()` creates, binds, and sets `O_NONBLOCK` + `FD_CLOEXEC`. `handle()` drains the accept queue in a loop and calls `callback.onNewConnection()`.
+- `IServerCallback` — pure interface to be implemented by `Server`. Callbacks: `onNewConnection(client_fd, listener_fd)`, `onClientIN(conn)`, `onClientOUT(conn)`, `onCloseConnection(fd, conn)`, `onCgiPipeIN(conn)`, `onCgiPipeOUT(conn)`. All callbacks except `onNewConnection` take a `Connection*`.
+- `Socket` — listening socket, implements `IEventHandler`. `setup()` creates, binds, and sets `O_NONBLOCK` + `FD_CLOEXEC`. `handle()` drains the accept queue in a loop and calls `callback.onNewConnection()`.
+- `Connection` (`includes/server/Connection.hpp`) — header exists but is a stub (`#pragma once` + `#include "CgiJob.hpp"`); `srcs/server/Connection.cpp` is empty.
 
-**Current stub status** — these `.cpp` files exist but are empty; header files for them do not yet exist in `includes/`:
+**Not yet implemented** (`.cpp` files are empty, no header in `includes/` unless noted):
 - `srcs/server/Server.cpp` — main event loop, drives `EpollWrapper::wait()` and dispatches to `IEventHandler::handle()`
 - `srcs/server/Connection.cpp` — per-client state machine (read buffer → `Request::parse` → build response → write)
 - `srcs/server/SessionManager.cpp` — owns/tracks active `Connection` objects
-- `srcs/cgi/CGIHandler.cpp` — forks, sets CGI env vars, pipes body via stdin, reads stdout through epoll
+
+> **Note:** `srcs/main.cpp` is currently a manual test harness that exercises the config parser, HTTP parsing, and CGI execution end-to-end with hardcoded requests. It does not start the epoll event loop.
+
+### TODO — server layer integration
+
+- [ ] Define `Connection` class (fd, read/write buffers, state machine, associated `Cgi` instance)
+- [ ] Implement `Server` (event loop: `EpollWrapper::wait()` → cast `data.ptr` → `IEventHandler::handle()`)
+- [ ] Implement `SessionManager` (map `fd → Connection*`, lifecycle management)
+- [ ] Wire `Cgi` pipe fds into epoll (`onCgiPipeIN`/`onCgiPipeOUT` callbacks)
+- [ ] Set `O_NONBLOCK` + `FD_CLOEXEC` on `Cgi` pipe fds before forking (currently missing)
+- [ ] Replace `main.cpp` test harness with the real server startup sequence
 
 ### Utilities
 
@@ -98,7 +119,7 @@ server {
 
 - **C++98 only** — no `auto`, range-for, `std::to_string`, lambdas, or C++11 headers.
 - **Single epoll loop** — all sockets (listening + client + CGI pipes) go through one `EpollWrapper::wait()` call.
-- `fork()` is only permitted inside `CGIHandler` for CGI execution. All fds must have `FD_CLOEXEC` set before forking.
+- `fork()` is only permitted inside `Cgi::execute()` for CGI execution. All fds must have `FD_CLOEXEC` set before forking.
 - All sockets must be set non-blocking (`O_NONBLOCK`).
 - The server must never crash or hang regardless of input.
 

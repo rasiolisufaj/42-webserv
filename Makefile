@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+         #
+#    By: raisufaj <raisufaj@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/26 14:24:37 by Leny             ###   ########.fr        #
+#    Updated: 2026/05/28 16:58:29 by raisufaj         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -39,7 +39,7 @@ SRC			=	main \
 				config/ServerConfig \
 				cgi/Cgi \
 				server/Connection \
-				#server/EpollWrapper \
+				server/EpollWrapper \
 				server/Server \
 				server/SessionManager \
 				server/Socket \
