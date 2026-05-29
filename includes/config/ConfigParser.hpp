@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:25:56 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/19 20:12:31 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/29 11:33:05 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -44,11 +44,11 @@ class ConfigParser
         int validate_host(std::string host_str);
         int validate_segment(std::string segment);
         int validate_digits(std::string number_str);
+        int validate_unique_port(int port);
         static void logError(const std::string& message, const std::string& detail = "", int i = -1);
         std::vector<ServerConfig> servers;
 
     public:
-        
         ConfigParser();
         ~ConfigParser();
         int parseConfig(std::string path);

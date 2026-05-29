@@ -6,7 +6,7 @@
 /*   By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/27 13:24:41 by lellanos          #+#    #+#             */
-/*   Updated: 2026/05/22 13:20:41 by Leny             ###   ########.fr       */
+/*   Updated: 2026/05/29 11:47:30 by Leny             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -267,6 +267,16 @@ int ConfigParser::validate_host(std::string host_str)
     while(getline(ss, segment, '.'))
     {
         if (validate_segment(segment))
+            return 1;
+    }
+    return 0;
+}
+
+int ConfigParser::validate_unique_port(int port)
+{
+    for (size_t i = 0; i < (servers.size()-1); i++)
+    {
+        if (port == servers[i].port)
             return 1;
     }
     return 0;
@@ -561,6 +571,14 @@ int ConfigParser::fillConfig(std::vector<std::vector<std::string> > tokens)
                             port = atoi(port_str.c_str());
                             servers.back().host = host_str;
                             servers.back().port = port;
+                        }
+                        if (servers.size() > 1)
+                        {
+                            if(validate_unique_port(port) != 0)
+                            {
+                                logError("Duplicated port", tokens[i][j+1], i+1);
+                                return 1;
+                            }
                         }
                     }
                     else
