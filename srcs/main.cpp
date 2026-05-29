@@ -1,5 +1,6 @@
 #include "config/ConfigParser.hpp"
 #include "http/Request.hpp"
+#include "server/Server.hpp"
 #include "cgi/Cgi.hpp"
 #include <fcntl.h>
 #include "http/RequestContext.hpp"
@@ -40,7 +41,15 @@ int main(int ac, char **av)
         /*RASIOL'S PART*/
         /***************/
 
-        //....
+        std::cout << "\n+++SERVER CORE LOG+++\n";
+
+        try {
+            Server server(all_servers);
+            server.run();
+        } catch (const std::exception& e) {
+            std::cerr << "Server error: " << e.what() << '\n';
+            return (EXIT_FAILURE);
+        }
 
         /**************/
         /*THOMA'S PART*/

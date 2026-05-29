@@ -105,7 +105,8 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
     {
         callback.onClientIN(this);
     }
-    else if (event & EPOLLOUT)
+    
+    if (event & EPOLLOUT)
     {
         callback.onClientOUT(this);
     }
