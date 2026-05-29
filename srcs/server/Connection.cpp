@@ -19,7 +19,8 @@ Connection::Connection(int fd, const ServerConfig *serverCfg)
       state(READING_HEADER), last_activity(std::time(NULL)),
       first_byte_time(0), header_complete(false), closeAfterWrite(false),
       file_fd(-1), file_bytes_sent(0), file_total_size(0), is_streaming_file(false),
-      header_check_len(0), chunk_raw_offset(0) {}
+      header_check_len(0), chunk_raw_offset(0), expected_request_total(0),
+      upload_fd(-1), body_bytes_expected(0), body_bytes_received(0), is_streaming_upload(false) {}
 
 Connection::~Connection()
 {
@@ -33,15 +34,18 @@ Connection::~Connection()
         close(this->file_fd);
         this->file_fd = -1;
     }
-
-    // Close the upload fd if it's open
+    if (this->upload_fd != -1)
+    {
+        close(this->upload_fd);
+        this->upload_fd = -1;
+    }
 }
 
 /*
     * Converts a ConnectionState enum value to a printable string.
 */
 
-static const std::string getState(int state)
+static const char* getState(int state)
 {
     switch (state)
     {
@@ -86,8 +90,6 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
         return;
     }
 
-    // EPOLLRDHUP means the peer closed the connection, but we may still have data to write back, so we set closeAfterWrite and only close if we're not also EPOLLIN/EPOLLOUT (if the client closed but we still have data to send, we want to try to send it before closing)
-
     if (event & EPOLLRDHUP)
     {
         this->closeAfterWrite = true;
@@ -102,18 +104,12 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
     if (event & EPOLLIN)
     {
         callback.onClientIN(this);
-        if (this->state == CLOSED)
-        {
-            callback.onCloseConnection(this->_fd, this);
-            return;
-        }
-    } else if (event & EPOLLOUT)
+    }
+    else if (event & EPOLLOUT)
     {
         callback.onClientOUT(this);
-        if (this->state == CLOSED)
-        {
-            callback.onCloseConnection(this->_fd, this);
-            return;
-        }
     }
+
+    if (this->state == CLOSED)
+        callback.onCloseConnection(this->_fd, this);
 }

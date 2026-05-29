@@ -71,6 +71,9 @@ clean:
 fclean: clean
 	rm -f $(NAME)
 
-re: fclean all
+test: $(NAME)
+	@c++ $(CXXFLAGS) $(INCLUDES) tests/test_main.cpp $(filter-out obj/main.o,$(OBJ)) -o tests/test_main
+	@echo "Running tests..."
+	@./tests/test_main
 
-.PHONY: all clean fclean re
+.PHONY: all clean fclean re test

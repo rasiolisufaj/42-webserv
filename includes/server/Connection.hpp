@@ -54,18 +54,7 @@ class Connection : public IEventHandler
 
         std::vector<char>    chunk_decoded; // body bytes decoded from chunked encoding, used for CGI input
         size_t   expected_request_total; // total expected request size (header + body) based on Content-Length or chunked encoding, used for connection timeout and to prevent DoS
-        
-        // CGI PART
-        
-        /*
-        int  cgi_stdin_fd;  // fd for writing request body to CGI process
-        int  cgi_stdout_fd; // fd for reading CGI output
-        pid_t cgi_pid;
-        std::time_t cgi_start_time; // timestamp when CGI process was started, used for CGI timeout
-        std::vector<char> cgi_raw_output;
-        std::string pending_extra_headers;
-        */
-        
+
         // streaming state
         int      upload_fd;
         size_t   body_bytes_expected;
