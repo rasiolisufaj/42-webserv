@@ -27,8 +27,14 @@ int main(int ac, char **av)
             return (EXIT_FAILURE);
         
         const std::vector<ServerConfig> &all_servers = Parser.getServers();
-        const ServerConfig &my_server = all_servers[0];
-        const Location &loc = my_server.locations[0];
+        for (size_t i = 0; i < all_servers.size(); i++)
+        {
+            all_servers[i].print_servers();
+        }
+
+        //const std::vector<ServerConfig> &all_servers = Parser.getServers();
+       // const ServerConfig &my_server = all_servers[0];
+        //const Location &loc = my_server.locations[0];
         
         /***************/
         /*RASIOL'S PART*/
@@ -39,7 +45,8 @@ int main(int ac, char **av)
         /**************/
         /*THOMA'S PART*/
         /**************/
-     
+    
+        /*
     Request request;
     RequestContext ctx;
 
@@ -130,6 +137,7 @@ int main(int ac, char **av)
 
     my_cgi.free_array(argv);
     my_cgi.free_array(envp);
+    */
 
     }
 
