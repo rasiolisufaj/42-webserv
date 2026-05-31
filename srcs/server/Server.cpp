@@ -142,6 +142,7 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
 
     // Register with epoll for reading
     try {
+        // watch for EPOLLIN (data to read) and EPOLLRDHUP (client closed its write side)
         _epoll.addFd(client_fd, EPOLLIN | EPOLLRDHUP, conn);
     } catch (const std::exception& e) {
         Logger::log(Logger::ERROR, std::string("Failed to add client fd to epoll: ") + e.what());

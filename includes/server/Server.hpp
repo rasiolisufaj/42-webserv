@@ -12,6 +12,7 @@ class Connection;
 
 class Server : public IServerCallback {
     private:
+        // Stores all parsed server configurations (from config file)
         const std::vector<ServerConfig>& _configs;
         EpollWrapper                     _epoll;
         std::vector<Socket*>             _listeners;
