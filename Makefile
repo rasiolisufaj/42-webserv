@@ -35,6 +35,7 @@ SRC			=	main \
 				http/RequestTarget \
 				http/utils_http \
 				http/RequestContext \
+				http/ConfigMatcher \
 				config/ConfigParser \
 				config/ServerConfig \
 				cgi/Cgi \

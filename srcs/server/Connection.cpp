@@ -87,7 +87,7 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
         Logger::log(Logger::DEBUG,
                     "Epoll error/hangup event: " + to_string(event));
         callback.onCloseConnection(this->_fd, this);
-        return;
+        return; // 'this' deleted — must not access any member after this point
     }
 
     if (event & EPOLLRDHUP)
@@ -104,13 +104,20 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
     if (event & EPOLLIN)
     {
         callback.onClientIN(this);
+        if (this->state == CLOSED)
+        {
+            callback.onCloseConnection(this->_fd, this);
+            return;
+        }
     }
-    
+
     if (event & EPOLLOUT)
     {
         callback.onClientOUT(this);
+        if (this->state == CLOSED)
+        {
+            callback.onCloseConnection(this->_fd, this);
+            return;
+        }
     }
-
-    if (this->state == CLOSED)
-        callback.onCloseConnection(this->_fd, this);
 }

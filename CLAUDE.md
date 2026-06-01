@@ -10,9 +10,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 make          # build the webserv binary
-make re       # clean rebuild
 make clean    # remove object files
 make fclean   # remove object files and binary
+make test     # build and run tests/test_main.cpp (linked against all objects except main.o)
 ```
 
 **Compiler flags:** `-std=c++98 -Wall -Wextra -Werror -MMD -MP`
@@ -43,48 +43,53 @@ Three developers, each owns a layer:
 - `RequestTarget` parses a URI target into `path` and `query`.
 - `Headers` holds a case-normalized `std::map<std::string,std::string>`. Key methods: `parseLine()`, `getHeader()`, `hasHeader()`, `getContentLength()`, `wantsClose()`, `getHost()` (returns `HostInfo{name, port}`).
 - `Request` ties the above together: `Request::parse(fullRequest)` populates `_requestLine`, `_headers`, and `_body`.
-- `RequestContext` is the bridge to routing. Call `ctx.build(request, local_port)` to resolve the effective host (`effectiveHost()`), normalized `method()`, `path()`, `query()`, and `bodySize()`. The server will use this to match `ServerConfig`/`Location`.
+- `RequestContext` is the bridge to routing. Call `ctx.build(request, local_port)` to resolve the effective host (`effectiveHost()`), normalized `method()`, `path()`, `query()`, `bodySize()`, and `localPort()`. The server uses this to match `ServerConfig`/`Location`.
+- `ConfigMatcher` routes a `RequestContext` to the right `ServerConfig` and `Location`. Call `matcher.match(ctx, servers)` which returns `RouteMatch{server, location}`. Server selection: prefers `server_name` match on the correct port, falls back to first config on that port, throws `std::runtime_error("400 Bad Request")` if no port matches. Location selection: longest-prefix match; throws `std::runtime_error("404 Not Found")` if no location matches.
 - `ChunkDecoder` decodes `Transfer-Encoding: chunked` bodies via `clean_body_chunk(chunked_body)`. Max body size is configurable (default 100 MB).
 - `utils_http.hpp` provides free functions: `to_lower_ascii()` and `hex_value()`.
 
 ### CGI layer
 
-- `Cgi` (`srcs/cgi/Cgi.cpp`, `includes/cgi/Cgi.hpp`) — **implemented**. Forks a child process via `execute(argv, envp)`, wires up two pipes (stdin/stdout), and returns the child `pid_t` to the caller. The parent retains `getFdInWrite()` (write body to CGI) and `getFdOutRead()` (read CGI response). Key methods:
+- `Cgi` (`srcs/cgi/Cgi.cpp`, `includes/cgi/Cgi.hpp`) — fully implemented. Forks a child process via `execute(argv, envp)`, wires up two pipes (stdin/stdout), and returns the child `pid_t` to the caller. The parent retains `getFdInWrite()` (write body to CGI) and `getFdOutRead()` (read CGI response). Key methods:
   - `setUpEnvironment(ctx, loc)` — builds the CGI env map from a `RequestContext` and `Location`.
   - `setupArgv(loc, envMap)` — resolves the interpreter from `loc.cgi` keyed by file extension, returns `char**[interpreter, script_path, NULL]`.
   - `convertMapToEnvp(envMap)` — converts `std::map` to `char**` for `execve`.
   - `execute(argv, envp)` — creates pipes, `fork()`s, `dup2()`s, calls `execve` in child; parent closes unused ends and returns `pid`.
   - `free_array(char**)` — frees heap-allocated `char**` arrays.
-- `CgiJob` (`srcs/cgi/CgiJob.hpp`) — plain struct holding job parameters: `interpreter`, `script_path`, `working_dir`, `method`, `query_string`, `url_path`, `body` (`std::vector<char>`), `env` map. Intended to decouple the HTTP layer from the CGI executor (not yet wired into the event loop).
+- `CgiJob` — plain struct holding job parameters: `interpreter`, `script_path`, `working_dir`, `method`, `query_string`, `url_path`, `body` (`std::vector<char>`), `env` map. Not yet wired into the event loop.
 
 ### Server/event layer
 
-- `EpollWrapper` owns the epoll fd. Handler pointers are stored in `epoll_event.data.ptr` (not a separate map). Key methods: `addFd`, `modifyFd`, `removeFd`, `wait`, `getEvents`. Throws `std::runtime_error` on epoll syscall failure. `wait()` retries on `EINTR`.
-- `IEventHandler` — pure interface. `virtual void handle(uint32_t event, IServerCallback &callback)`. Both listening sockets and connections implement this.
-- `IServerCallback` — pure interface to be implemented by `Server`. Callbacks: `onNewConnection(client_fd, listener_fd)`, `onClientIN(conn)`, `onClientOUT(conn)`, `onCloseConnection(fd, conn)`, `onCgiPipeIN(conn)`, `onCgiPipeOUT(conn)`. All callbacks except `onNewConnection` take a `Connection*`.
+- `EpollWrapper` owns the epoll fd. Handler pointers are stored in `epoll_event.data.ptr` (not a separate map). Key methods: `addFd`, `modifyFd`, `removeFd`, `wait`, `getEvents`. Throws `std::runtime_error` on epoll syscall failure. `wait()` retries on `EINTR`. `MAX_EVENTS = 1024`.
+- `IEventHandler` — pure interface. `virtual void handle(uint32_t event, IServerCallback &callback)`. Both `Socket` and `Connection` implement this.
+- `IServerCallback` — pure interface implemented by `Server`. Callbacks: `onNewConnection(client_fd, listener_fd)`, `onClientIN(conn)`, `onClientOUT(conn)`, `onCloseConnection(fd, conn)`, `onCgiPipeIN(conn)`, `onCgiPipeOUT(conn)`.
 - `Socket` — listening socket, implements `IEventHandler`. `setup()` creates, binds, and sets `O_NONBLOCK` + `FD_CLOEXEC`. `handle()` drains the accept queue in a loop and calls `callback.onNewConnection()`.
-- `Connection` (`includes/server/Connection.hpp`) — header exists but is a stub (`#pragma once` + `#include "CgiJob.hpp"`); `srcs/server/Connection.cpp` is empty.
-
-**Not yet implemented** (`.cpp` files are empty, no header in `includes/` unless noted):
-- `srcs/server/Server.cpp` — main event loop, drives `EpollWrapper::wait()` and dispatches to `IEventHandler::handle()`
-- `srcs/server/Connection.cpp` — per-client state machine (read buffer → `Request::parse` → build response → write)
-- `srcs/server/SessionManager.cpp` — owns/tracks active `Connection` objects
-
-> **Note:** `srcs/main.cpp` is currently a manual test harness that exercises the config parser, HTTP parsing, and CGI execution end-to-end with hardcoded requests. It does not start the epoll event loop.
-
-### TODO — server layer integration
-
-- [ ] Define `Connection` class (fd, read/write buffers, state machine, associated `Cgi` instance)
-- [ ] Implement `Server` (event loop: `EpollWrapper::wait()` → cast `data.ptr` → `IEventHandler::handle()`)
-- [ ] Implement `SessionManager` (map `fd → Connection*`, lifecycle management)
-- [ ] Wire `Cgi` pipe fds into epoll (`onCgiPipeIN`/`onCgiPipeOUT` callbacks)
-- [ ] Set `O_NONBLOCK` + `FD_CLOEXEC` on `Cgi` pipe fds before forking (currently missing)
-- [ ] Replace `main.cpp` test harness with the real server startup sequence
+- `Connection` — per-client state machine implementing `IEventHandler`. States: `READING_HEADER → READING_BODY → SENDING_RESPONSE → CGI_WRITING_BODY → CGI_READING_OUTPUT → CLOSED`. Holds `in_buffer`/`out_buffer` (`std::vector<char>`), `read_idx`/`write_idx`, timeout fields (`last_activity`, `first_byte_time`), file-streaming fields (`file_fd`, `file_bytes_sent`, `is_streaming_file`), upload-streaming fields (`upload_fd`, `body_bytes_expected`, `is_streaming_upload`), and `chunk_decoded`/`chunk_raw_offset` for resumable chunked decoding. `handle()` dispatches `EPOLLIN` → `onClientIN`, `EPOLLOUT` → `onClientOUT`, `EPOLLERR/EPOLLHUP` → `onCloseConnection`.
+- `Server` — owns `EpollWrapper`, `std::vector<Socket*>`, and `std::map<int, Connection*>`. `run()` drives the event loop (`epoll.wait(1000ms)` → cast `data.ptr` → `IEventHandler::handle()`). `_selectConfig()` picks `ServerConfig` by matching `Host` header against `server_name`. `_buildResponse()` is currently a **Phase 6 stub** that echoes method/target; real file serving and CGI are not yet wired. `onCgiPipeIN`/`onCgiPipeOUT` are stub placeholders.
+- `SessionManager` — stub (empty `.cpp`).
 
 ### Utilities
 
 - `Logger` — static class with levels `DEBUG/INFO/WARNING/ERROR` and ANSI color output. Use `Logger::log(Logger::INFO, msg)`. `Logger::setLogLevel()` suppresses messages below the threshold.
 - `to_string<T>()` — C++98 substitute for `std::to_string`, defined in `Logger.hpp`. Used throughout the codebase.
+
+## Current Implementation Status
+
+**Implemented:**
+- Config parsing (`ConfigParser`, `ServerConfig`, `Location`)
+- Full HTTP parsing (`Request`, `RequestContext`, `Headers`, `RequestLine`, `RequestTarget`, `ChunkDecoder`)
+- `ConfigMatcher` — routes requests to server block + location block
+- CGI execution (`Cgi::execute`, `setUpEnvironment`, `setupArgv`)
+- Epoll event loop (`EpollWrapper`, `Socket`, `Server::run()`)
+- Connection state machine (`Connection`, `onClientIN`, `onClientOUT`, `onCloseConnection`)
+
+**Not yet implemented / stubs:**
+- `Server::_buildResponse()` — Phase 6 stub: echoes method/target as plain text
+- `Server::onCgiPipeIN` / `onCgiPipeOUT` — CGI pipe integration with epoll
+- `SessionManager` — empty `.cpp`
+- `O_NONBLOCK` + `FD_CLOEXEC` on `Cgi` pipe fds before forking
+- Real response building: static file serving, error pages, autoindex, redirects, upload handling
+- Connection timeout enforcement (`last_activity`, `first_byte_time` fields exist but no timeout logic)
 
 ## Config File Syntax
 
@@ -123,13 +128,11 @@ server {
 - All sockets must be set non-blocking (`O_NONBLOCK`).
 - The server must never crash or hang regardless of input.
 
-## Static Content & Test Files
-
-- `www/` contains test HTML, error pages, CSS/JS, and `upload_store/`.
-- `www/cgi-bin/` contains Python CGI scripts for manual testing.
-- `config/` contains example `.conf` files: `default.conf`, `webserv.conf`, `multipleServers.conf`, `tester.conf`, `pretty.conf`, `siege.conf`.
-
 ## Testing
+
+```bash
+make test     # compile and run tests/test_main.cpp
+```
 
 Manual testing with `curl`:
 ```bash
@@ -139,4 +142,4 @@ curl -X DELETE http://localhost:8080/upload/file.txt
 curl -X UNKNOWN http://localhost:8080/  # expect 501
 ```
 
-Both `tests/test.py` and `tests/test_basic.sh` are placeholder stubs with no actual tests.
+`www/cgi-bin/` contains Python CGI scripts (`cgi_post.py`, `sum.py`) and a shell script (`status.sh`) for manual CGI testing. Both `tests/test.py` and `tests/test_basic.sh` are placeholder stubs.

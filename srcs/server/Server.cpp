@@ -2,6 +2,9 @@
 #include "server/Connection.hpp"
 #include "utils/Logger.hpp"
 #include "http/Request.hpp"
+#include "http/RequestContext.hpp"
+#include "http/ConfigMatcher.hpp"
+#include "http/Headers.hpp"
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -159,7 +162,6 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
 
 /*
  * Called when a client socket is readable.
- * Phase 6: read from socket, buffer request, parse when complete, build response.
  */
 void Server::onClientIN(Connection* conn) {
     if (!conn) {
@@ -170,135 +172,136 @@ void Server::onClientIN(Connection* conn) {
     int fd = conn->getFd();
     Logger::log(Logger::DEBUG, "onClientIN fd=" + to_string(fd));
 
-    // Read from socket into in_buffer
     char buf[4096];
     ssize_t n = recv(fd, buf, sizeof(buf), 0);
 
     if (n == 0) {
-        // Client closed the connection
         Logger::log(Logger::INFO, "Client closed connection fd=" + to_string(fd));
         conn->setState(Connection::CLOSED);
-        onCloseConnection(fd, conn);
         return;
     }
-
     if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // Spurious wake-up, not ready to read
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
             return;
-        }
         Logger::log(Logger::WARNING, "recv error: " + std::string(strerror(errno)));
         conn->setState(Connection::CLOSED);
-        onCloseConnection(fd, conn);
         return;
     }
 
-    // Append received bytes to in_buffer
-    for (ssize_t i = 0; i < n; ++i) {
-        conn->in_buffer.push_back(buf[i]);
-    }
-
+    conn->in_buffer.insert(conn->in_buffer.end(), buf, buf + n);
     Logger::log(Logger::DEBUG, "Read " + to_string(n) + " bytes, in_buffer now " +
                 to_string(conn->in_buffer.size()) + " bytes");
 
-    // Check if we have a complete HTTP request
-    // Look for \r\n\r\n (end of headers)
     std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.end());
     size_t header_end = buffer_str.find("\r\n\r\n");
-
     if (header_end == std::string::npos) {
-        // Headers not complete yet, wait for more data
         Logger::log(Logger::DEBUG, "Incomplete request, waiting for more data");
         return;
     }
 
-    // Headers end at header_end + 4 (length of \r\n\r\n)
     size_t body_start = header_end + 4;
     size_t body_received = buffer_str.size() - body_start;
 
-    // Extract just the headers portion to check Content-Length
-    std::string headers_str = buffer_str.substr(0, header_end);
-
-    // Parse headers to get Content-Length
-    size_t content_length = 0;
-    size_t cl_pos = headers_str.find("Content-Length:");
-    if (cl_pos != std::string::npos) {
-        // Find the end of the Content-Length line
-        size_t cl_end = headers_str.find("\r\n", cl_pos);
-        if (cl_end == std::string::npos)
-            cl_end = headers_str.find("\n", cl_pos);
-
-        std::string cl_value = headers_str.substr(cl_pos + 15); // Skip "Content-Length:"
-        if (cl_end != std::string::npos)
-            cl_value = cl_value.substr(0, cl_end - (cl_pos + 15));
-
-        // Trim whitespace
-        size_t start = cl_value.find_first_not_of(" \t");
-        if (start != std::string::npos)
-            cl_value = cl_value.substr(start);
-        size_t end = cl_value.find_last_not_of(" \t\r\n");
-        if (end != std::string::npos)
-            cl_value = cl_value.substr(0, end + 1);
-
-        // Convert to size_t
-        if (!cl_value.empty()) {
-            for (size_t i = 0; i < cl_value.size(); ++i) {
-                if (cl_value[i] < '0' || cl_value[i] > '9') {
-                    content_length = 0;
-                    break;
-                }
-                content_length = content_length * 10 + (cl_value[i] - '0');
-            }
+    // Use Headers to check body completeness: case-insensitive, reuses validated logic.
+    Headers temp_headers;
+    try {
+        std::string head = buffer_str.substr(0, header_end);
+        size_t rl_end = head.find("\r\n");
+        std::string headers_only = (rl_end != std::string::npos) ? head.substr(rl_end + 2) : "";
+        size_t pos = 0;
+        while (pos < headers_only.size()) {
+            size_t eol = headers_only.find("\r\n", pos);
+            std::string line = (eol == std::string::npos)
+                ? headers_only.substr(pos)
+                : headers_only.substr(pos, eol - pos);
+            pos = (eol == std::string::npos) ? headers_only.size() : eol + 2;
+            if (!line.empty())
+                temp_headers.parseLine(line);
         }
-    }
-
-    // Check if we have the complete body
-    if (body_received < content_length) {
-        Logger::log(Logger::DEBUG, "Body incomplete: received " + to_string(body_received) +
-                    " bytes, expecting " + to_string(content_length));
+    } catch (const std::exception& e) {
+        Logger::log(Logger::WARNING, std::string("Header parse error: ") + e.what());
+        conn->in_buffer.clear();
+        _sendError(conn, fd, 400, "Bad Request");
         return;
     }
 
-    // Parse the complete request
+    if (temp_headers.hasHeader("transfer-encoding")) {
+        // Look for chunked terminal "0\r\n\r\n" starting from the body section.
+        if (buffer_str.find("0\r\n\r\n", body_start) == std::string::npos) {
+            Logger::log(Logger::DEBUG, "Chunked body incomplete, waiting for more data");
+            return;
+        }
+    } else {
+        size_t content_length = 0;
+        try {
+            content_length = temp_headers.getContentLength();
+        } catch (const std::exception& e) {
+            Logger::log(Logger::WARNING, std::string("Content-Length error: ") + e.what());
+            conn->in_buffer.clear();
+            _sendError(conn, fd, 400, "Bad Request");
+            return;
+        }
+        if (body_received < content_length) {
+            Logger::log(Logger::DEBUG, "Body incomplete: received " + to_string(body_received) +
+                        " bytes, expecting " + to_string(content_length));
+            return;
+        }
+    }
+
+    // Full request buffered — parse it.
     Request req;
     try {
         req.parse(buffer_str);
         Logger::log(Logger::DEBUG, "Request parsed successfully");
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("Request parse error: ") + e.what());
-
-        // Build 400 Bad Request response
-        std::string err_response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        conn->out_buffer.resize(err_response.size());
-        for (size_t i = 0; i < err_response.size(); ++i) {
-            conn->out_buffer[i] = err_response[i];
-        }
-        conn->write_idx = 0;
-        conn->setState(Connection::SENDING_RESPONSE);
-        _epoll.modifyFd(fd, EPOLLOUT | EPOLLRDHUP, conn);
+        conn->in_buffer.clear();
+        _sendError(conn, fd, 400, "Bad Request");
         return;
     }
 
-    // Select the appropriate ServerConfig based on Host header
-    const ServerConfig& cfg = _selectConfig(req);
+    // Buffer is no longer needed once the Request object is built.
+    conn->in_buffer.clear();
 
-    // Build response
-    std::string response = _buildResponse(req, conn, &cfg);
-
-    conn->out_buffer.resize(response.size());
-    for (size_t i = 0; i < response.size(); ++i) {
-        conn->out_buffer[i] = response[i];
+    // Build RequestContext using the port this connection arrived on.
+    RequestContext ctx;
+    try {
+        ctx.build(req, conn->server_cfg->port);
+    } catch (const std::exception& e) {
+        Logger::log(Logger::WARNING, std::string("RequestContext build error: ") + e.what());
+        _sendError(conn, fd, 400, "Bad Request");
+        return;
     }
-    conn->write_idx = 0;
 
-    // Switch to writing mode
+    // Route: ConfigMatcher selects the matching server block and location block.
+    ConfigMatcher matcher;
+    const ServerConfig* matched_server = NULL;
+    const Location*     matched_location = NULL;
+    try {
+        RouteMatch route = matcher.match(ctx, _configs);
+        matched_server   = route.server;
+        matched_location = route.location;
+    } catch (const std::exception& e) {
+        Logger::log(Logger::WARNING, std::string("Routing error: ") + e.what());
+        std::string msg = e.what();
+        if (msg.find("404") != std::string::npos)
+            _sendError(conn, fd, 404, "Not Found");
+        else
+            _sendError(conn, fd, 400, "Bad Request");
+        return;
+    }
+
+    std::string response = _buildResponse(req, ctx, matched_server, matched_location, conn);
+    conn->out_buffer.assign(response.begin(), response.end());
+    conn->write_idx = 0;
     conn->setState(Connection::SENDING_RESPONSE);
     _epoll.modifyFd(fd, EPOLLOUT | EPOLLRDHUP, conn);
 }
 
 /*
  * Called when a client socket is writable.
- * Sends buffered response data.
+ * Sends buffered response data. Sets CLOSED when done; Connection::handle() calls
+ * onCloseConnection after this returns.
  */
 void Server::onClientOUT(Connection* conn) {
     if (!conn) {
@@ -309,11 +312,8 @@ void Server::onClientOUT(Connection* conn) {
     int fd = conn->getFd();
     Logger::log(Logger::DEBUG, "onClientOUT fd=" + to_string(fd));
 
-    // Send from out_buffer
     if (conn->out_buffer.empty() || conn->write_idx >= conn->out_buffer.size()) {
-        // Nothing to send, close connection
         conn->setState(Connection::CLOSED);
-        onCloseConnection(fd, conn);
         return;
     }
 
@@ -321,23 +321,18 @@ void Server::onClientOUT(Connection* conn) {
     ssize_t n = send(fd, &conn->out_buffer[conn->write_idx], remaining, MSG_NOSIGNAL);
 
     if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // Can't write now, epoll will fire again when ready
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
             return;
-        }
         Logger::log(Logger::WARNING, "send failed: " + std::string(strerror(errno)));
         conn->setState(Connection::CLOSED);
-        onCloseConnection(fd, conn);
         return;
     }
 
-    conn->write_idx += n;
+    conn->write_idx += static_cast<size_t>(n);
 
     if (conn->write_idx >= conn->out_buffer.size()) {
-        // All data sent, close connection
         Logger::log(Logger::DEBUG, "Response fully sent to fd=" + to_string(fd));
         conn->setState(Connection::CLOSED);
-        onCloseConnection(fd, conn);
     }
 }
 
@@ -362,27 +357,39 @@ void Server::onCloseConnection(int fd, Connection* conn) {
 }
 
 /*
- * Builds an HTTP response for a request.
- * Phase 6 Stub: Always returns 200 OK with request echo.
- * Phase 7+: Integrate file serving, CGI, error pages, etc.
+ * Builds an HTTP response. Phase 6 stub: echoes method/target.
+ * Phase 7+: real file serving, CGI, error pages, redirects.
  */
-std::string Server::_buildResponse(const Request& req, Connection* conn, const ServerConfig* cfg) const {
-    (void)conn;
+std::string Server::_buildResponse(const Request& req, const RequestContext& ctx,
+                                    const ServerConfig* cfg, const Location* loc,
+                                    Connection* conn) const {
+    (void)ctx;
     (void)cfg;
+    (void)loc;
+    (void)conn;
 
     std::string method = req.requestLine().method();
     std::string target = req.requestLine().target();
 
-    // Phase 6 stub: Echo request info back to client
     std::string body = "Method: " + method + "\nTarget: " + target + "\n";
+    return "HTTP/1.1 200 OK\r\n"
+           "Content-Type: text/plain\r\n"
+           "Content-Length: " + to_string(body.size()) + "\r\n"
+           "Connection: close\r\n"
+           "\r\n" + body;
+}
 
-    std::string response = "HTTP/1.1 200 OK\r\n"
-                          "Content-Type: text/plain\r\n"
-                          "Content-Length: " + to_string(body.size()) + "\r\n"
-                          "Connection: close\r\n"
-                          "\r\n" + body;
-
-    return response;
+/*
+ * Sends a minimal error response and arms EPOLLOUT.
+ * onClientOUT will drain and then set state=CLOSED; Connection::handle() closes.
+ */
+void Server::_sendError(Connection* conn, int fd, int status, const std::string& reason) {
+    std::string response = "HTTP/1.1 " + to_string(status) + " " + reason +
+                           "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    conn->out_buffer.assign(response.begin(), response.end());
+    conn->write_idx = 0;
+    conn->setState(Connection::SENDING_RESPONSE);
+    _epoll.modifyFd(fd, EPOLLOUT | EPOLLRDHUP, conn);
 }
 
 /*
@@ -401,29 +408,3 @@ void Server::onCgiPipeOUT(Connection* conn) {
     Logger::log(Logger::WARNING, "onCgiPipeOUT not implemented (Phase 7)");
 }
 
-/*
- * Selects a ServerConfig based on the request Host header.
- * Matches Host (without port) against server_name in each config.
- * Falls back to first config if no match found.
- */
-const ServerConfig& Server::_selectConfig(const Request& req) const {
-    HostInfo host_info = req.headers().getHost();
-    std::string hostname = host_info.name;
-
-    if (hostname.empty()) {
-        // No Host header, use first config
-        return _configs[0];
-    }
-
-    // Try to match hostname against server_name in each config
-    for (size_t i = 0; i < _configs.size(); ++i) {
-        if (_configs[i].server_name == hostname) {
-            Logger::log(Logger::DEBUG, "Matched Host: " + hostname + " to config " + to_string(i));
-            return _configs[i];
-        }
-    }
-
-    // No match found, use first config as default
-    Logger::log(Logger::DEBUG, "No matching config for Host: " + hostname + ", using default");
-    return _configs[0];
-}

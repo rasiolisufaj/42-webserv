@@ -8,6 +8,7 @@
 #include "server/EpollWrapper.hpp"
 #include "server/Socket.hpp"
 #include "http/Request.hpp"
+#include "http/RequestContext.hpp"
 
 class Connection;
 
@@ -27,18 +28,18 @@ class Server : public IServerCallback {
         void _initListeners();
 
         /*
-         * Selects the appropriate ServerConfig based on the request Host header.
-         * Matches Host (without port) against server_name in each config.
-         * Falls back to first config if no match found.
+         * Sends a minimal error response (status line + Connection: close, no body).
+         * Sets conn state to SENDING_RESPONSE and arms EPOLLOUT.
          */
-        const ServerConfig& _selectConfig(const Request& req) const;
+        void _sendError(Connection* conn, int fd, int status, const std::string& reason);
 
         /*
          * Builds an HTTP response for the given request.
-         * Phase 6: stub that always returns 200 OK with placeholder body.
-         * Phase 7+: real response generation with file serving.
+         * Phase 6: stub that echoes method/target. Phase 7+: real response generation.
          */
-        std::string _buildResponse(const Request& req, Connection* conn, const ServerConfig* cfg) const;
+        std::string _buildResponse(const Request& req, const RequestContext& ctx,
+                                   const ServerConfig* cfg, const Location* loc,
+                                   Connection* conn) const;
 
         Server(const Server& other);
         Server& operator=(const Server& rhs);
