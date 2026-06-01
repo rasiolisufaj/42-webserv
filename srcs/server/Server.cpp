@@ -1,7 +1,10 @@
 #include "server/Server.hpp"
 #include "server/Connection.hpp"
 #include "utils/Logger.hpp"
+#include "http/Request.hpp"
 #include <sys/epoll.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <cerrno>
 #include <cstring>
 #include <ctime>
@@ -142,6 +145,7 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
 
     // Register with epoll for reading
     try {
+        // watch for EPOLLIN (data to read) and EPOLLRDHUP (client closed its write side)
         _epoll.addFd(client_fd, EPOLLIN | EPOLLRDHUP, conn);
     } catch (const std::exception& e) {
         Logger::log(Logger::ERROR, std::string("Failed to add client fd to epoll: ") + e.what());
@@ -155,7 +159,7 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
 
 /*
  * Called when a client socket is readable.
- * For Phase 5: read and buffer the request; send hardcoded response.
+ * Phase 6: read from socket, buffer request, parse when complete, build response.
  */
 void Server::onClientIN(Connection* conn) {
     if (!conn) {
@@ -166,15 +170,78 @@ void Server::onClientIN(Connection* conn) {
     int fd = conn->getFd();
     Logger::log(Logger::DEBUG, "onClientIN fd=" + to_string(fd));
 
-    // TODO Phase 6: Parse request and build response
-    // For Phase 5: hardcoded OK response
-    std::string response =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/plain\r\n"
-        "Content-Length: 13\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "Hello, World!";
+    // Step 1: Read from socket into in_buffer
+    char buf[4096];
+    ssize_t n = recv(fd, buf, sizeof(buf), 0);
+
+    if (n == 0) {
+        // Client closed the connection
+        Logger::log(Logger::DEBUG, "Client closed connection fd=" + to_string(fd));
+        conn->setState(Connection::CLOSED);
+        onCloseConnection(fd, conn);
+        return;
+    }
+
+    if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // Spurious wake-up, not ready to read
+            return;
+        }
+        Logger::log(Logger::WARNING, "recv error: " + std::string(strerror(errno)));
+        conn->setState(Connection::CLOSED);
+        onCloseConnection(fd, conn);
+        return;
+    }
+
+    // Append received bytes to in_buffer
+    for (ssize_t i = 0; i < n; ++i) {
+        conn->in_buffer.push_back(buf[i]);
+    }
+
+    Logger::log(Logger::DEBUG, "Read " + to_string(n) + " bytes, in_buffer now " +
+                to_string(conn->in_buffer.size()) + " bytes");
+
+    // Step 2: Check if we have a complete HTTP request
+    // Look for \r\n\r\n (end of headers)
+    std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.end());
+    size_t header_end = buffer_str.find("\r\n\r\n");
+
+    if (header_end == std::string::npos) {
+        // Headers not complete yet, wait for more data
+        Logger::log(Logger::DEBUG, "Incomplete request, waiting for more data");
+        return;
+    }
+
+    // Headers end at header_end + 4 (length of \r\n\r\n)
+    // TODO: For Phase 6, we should parse headers to get Content-Length
+    // and verify body is complete before parsing.
+    // For now, assume simple requests with no body or small body.
+
+    // Step 3: Parse the request
+    Request req;
+    try {
+        req.parse(buffer_str);
+        Logger::log(Logger::DEBUG, "Request parsed successfully");
+    } catch (const std::exception& e) {
+        Logger::log(Logger::WARNING, std::string("Request parse error: ") + e.what());
+
+        // Build 400 Bad Request response
+        std::string err_response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        conn->out_buffer.resize(err_response.size());
+        for (size_t i = 0; i < err_response.size(); ++i) {
+            conn->out_buffer[i] = err_response[i];
+        }
+        conn->write_idx = 0;
+        conn->setState(Connection::SENDING_RESPONSE);
+        _epoll.modifyFd(fd, EPOLLOUT | EPOLLRDHUP, conn);
+        return;
+    }
+
+    // Step 3.5: Select the appropriate ServerConfig based on Host header
+    const ServerConfig& cfg = _selectConfig(req);
+
+    // Step 4: Build response
+    std::string response = _buildResponse(req, conn, &cfg);
 
     conn->out_buffer.resize(response.size());
     for (size_t i = 0; i < response.size(); ++i) {
@@ -253,6 +320,30 @@ void Server::onCloseConnection(int fd, Connection* conn) {
 }
 
 /*
+ * Builds an HTTP response for a request.
+ * Phase 6 Stub: Always returns 200 OK with request echo.
+ * Phase 7+: Integrate file serving, CGI, error pages, etc.
+ */
+std::string Server::_buildResponse(const Request& req, Connection* conn, const ServerConfig* cfg) const {
+    (void)conn;
+    (void)cfg;
+
+    std::string method = req.requestLine().method();
+    std::string target = req.requestLine().target();
+
+    // Phase 6 stub: Echo request info back to client
+    std::string body = "Method: " + method + "\nTarget: " + target + "\n";
+
+    std::string response = "HTTP/1.1 200 OK\r\n"
+                          "Content-Type: text/plain\r\n"
+                          "Content-Length: " + to_string(body.size()) + "\r\n"
+                          "Connection: close\r\n"
+                          "\r\n" + body;
+
+    return response;
+}
+
+/*
  * Placeholder for CGI stdout pipe (Phase 7).
  */
 void Server::onCgiPipeIN(Connection* conn) {
@@ -269,10 +360,28 @@ void Server::onCgiPipeOUT(Connection* conn) {
 }
 
 /*
- * Selects a ServerConfig based on connection (Phase 6: virtual hosting).
- * For Phase 5: just return first config.
+ * Selects a ServerConfig based on the request Host header.
+ * Matches Host against server_name in each config.
+ * Falls back to first config if no match found.
  */
-const ServerConfig& Server::_selectConfig(Connection* conn) const {
-    (void)conn;
+const ServerConfig& Server::_selectConfig(const Request& req) const {
+    // Get Host header from request
+    std::string host = req.headers().getHost().name;
+
+    if (host.empty()) {
+        // No Host header, use first config
+        return _configs[0];
+    }
+
+    // Try to match host against server_name in each config
+    for (size_t i = 0; i < _configs.size(); ++i) {
+        if (_configs[i].server_name == host) {
+            Logger::log(Logger::DEBUG, "Matched Host: " + host + " to config " + to_string(i));
+            return _configs[i];
+        }
+    }
+
+    // No match found, use first config as default
+    Logger::log(Logger::DEBUG, "No matching config for Host: " + host + ", using default");
     return _configs[0];
 }

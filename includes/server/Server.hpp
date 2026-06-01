@@ -7,11 +7,13 @@
 #include "server/IServerCallback.hpp"
 #include "server/EpollWrapper.hpp"
 #include "server/Socket.hpp"
+#include "http/Request.hpp"
 
 class Connection;
 
 class Server : public IServerCallback {
     private:
+        // Stores all parsed server configurations (from config file)
         const std::vector<ServerConfig>& _configs;
         EpollWrapper                     _epoll;
         std::vector<Socket*>             _listeners;
@@ -31,9 +33,17 @@ class Server : public IServerCallback {
 
         /*
          * Selects the appropriate ServerConfig based on the request Host header.
-         * For Phase 5: returns first config (virtual hosting in Phase 6).
+         * Matches Host header against server_name in each config.
+         * Falls back to first config if no match found.
          */
-        const ServerConfig& _selectConfig(Connection* conn) const;
+        const ServerConfig& _selectConfig(const Request& req) const;
+
+        /*
+         * Builds an HTTP response for the given request.
+         * Phase 6: stub that always returns 200 OK with placeholder body.
+         * Phase 7+: real response generation with file serving.
+         */
+        std::string _buildResponse(const Request& req, Connection* conn, const ServerConfig* cfg) const;
 
         Server(const Server& other);
         Server& operator=(const Server& rhs);
