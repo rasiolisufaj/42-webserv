@@ -6,11 +6,12 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/01 11:54:20 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/01 14:27:23 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/01 14:31:12 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "http/ConfigMatcher.hpp"
+#include <stdexcept>
 
 /*
 
@@ -39,16 +40,29 @@ bool ConfigMatcher::portMatch(const RequestContext &ctx,
 bool ConfigMatcher::locationMatch(const std::string &request_path,
                                   const std::string &location_path) const
 {
+    size_t i;
+
     if (location_path.empty() || request_path.empty())
         return (false);
     if (location_path.size() > request_path.size())
         return (false);
-    for (size_t i = 0; i < location_path.size(); i++)
+
+    i = 0;
+    while (i < location_path.size())
     {
         if (request_path[i] != location_path[i])
             return (false);
+        i++;
     }
-    return (true);
+
+    if (location_path == "/")
+        return (true);
+    if (request_path.size() == location_path.size())
+        return (true);
+    if (request_path[location_path.size()] == '/')
+        return (true);
+
+    return (false);
 }
 
 const ServerConfig *ConfigMatcher::findServer(const RequestContext &ctx,
