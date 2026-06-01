@@ -154,7 +154,7 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
     }
 
     _connections[client_fd] = conn;
-    Logger::log(Logger::DEBUG, "New connection accepted (fd=" + to_string(client_fd) + ")");
+    Logger::log(Logger::INFO, "New connection accepted (fd=" + to_string(client_fd) + ")");
 }
 
 /*
@@ -170,13 +170,13 @@ void Server::onClientIN(Connection* conn) {
     int fd = conn->getFd();
     Logger::log(Logger::DEBUG, "onClientIN fd=" + to_string(fd));
 
-    // Step 1: Read from socket into in_buffer
+    // Read from socket into in_buffer
     char buf[4096];
     ssize_t n = recv(fd, buf, sizeof(buf), 0);
 
     if (n == 0) {
         // Client closed the connection
-        Logger::log(Logger::DEBUG, "Client closed connection fd=" + to_string(fd));
+        Logger::log(Logger::INFO, "Client closed connection fd=" + to_string(fd));
         conn->setState(Connection::CLOSED);
         onCloseConnection(fd, conn);
         return;
@@ -201,7 +201,7 @@ void Server::onClientIN(Connection* conn) {
     Logger::log(Logger::DEBUG, "Read " + to_string(n) + " bytes, in_buffer now " +
                 to_string(conn->in_buffer.size()) + " bytes");
 
-    // Step 2: Check if we have a complete HTTP request
+    // Check if we have a complete HTTP request
     // Look for \r\n\r\n (end of headers)
     std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.end());
     size_t header_end = buffer_str.find("\r\n\r\n");
@@ -212,12 +212,7 @@ void Server::onClientIN(Connection* conn) {
         return;
     }
 
-    // Headers end at header_end + 4 (length of \r\n\r\n)
-    // TODO: For Phase 6, we should parse headers to get Content-Length
-    // and verify body is complete before parsing.
-    // For now, assume simple requests with no body or small body.
-
-    // Step 3: Parse the request
+    // Parse the request
     Request req;
     try {
         req.parse(buffer_str);
@@ -237,10 +232,10 @@ void Server::onClientIN(Connection* conn) {
         return;
     }
 
-    // Step 3.5: Select the appropriate ServerConfig based on Host header
+    // Select the appropriate ServerConfig based on Host header
     const ServerConfig& cfg = _selectConfig(req);
 
-    // Step 4: Build response
+    // Build response
     std::string response = _buildResponse(req, conn, &cfg);
 
     conn->out_buffer.resize(response.size());
