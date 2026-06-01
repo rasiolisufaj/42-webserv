@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: Leny <Leny@student.42.fr>                  +#+  +:+       +#+         #
+#    By: raisufaj <raisufaj@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/05/26 14:24:37 by Leny             ###   ########.fr        #
+#    Updated: 2026/05/29 12:07:25 by raisufaj         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -35,11 +35,12 @@ SRC			=	main \
 				http/RequestTarget \
 				http/utils_http \
 				http/RequestContext \
+				http/ConfigMatcher \
 				config/ConfigParser \
 				config/ServerConfig \
 				cgi/Cgi \
 				server/Connection \
-				#server/EpollWrapper \
+				server/EpollWrapper \
 				server/Server \
 				server/SessionManager \
 				server/Socket \
@@ -71,6 +72,9 @@ clean:
 fclean: clean
 	rm -f $(NAME)
 
-re: fclean all
+test: $(NAME)
+	@c++ $(CXXFLAGS) $(INCLUDES) tests/test_main.cpp $(filter-out obj/main.o,$(OBJ)) -o tests/test_main
+	@echo "Running tests..."
+	@./tests/test_main
 
-.PHONY: all clean fclean re
+.PHONY: all clean fclean re test
