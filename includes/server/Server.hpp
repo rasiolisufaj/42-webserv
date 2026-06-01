@@ -27,13 +27,8 @@ class Server : public IServerCallback {
         void _initListeners();
 
         /*
-         * Closes and removes a connection from tracking.
-         */
-        void _closeConnection(int fd, Connection* conn);
-
-        /*
          * Selects the appropriate ServerConfig based on the request Host header.
-         * Matches Host header against server_name in each config.
+         * Matches Host (without port) against server_name in each config.
          * Falls back to first config if no match found.
          */
         const ServerConfig& _selectConfig(const Request& req) const;

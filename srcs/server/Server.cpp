@@ -212,7 +212,54 @@ void Server::onClientIN(Connection* conn) {
         return;
     }
 
-    // Parse the request
+    // Headers end at header_end + 4 (length of \r\n\r\n)
+    size_t body_start = header_end + 4;
+    size_t body_received = buffer_str.size() - body_start;
+
+    // Extract just the headers portion to check Content-Length
+    std::string headers_str = buffer_str.substr(0, header_end);
+
+    // Parse headers to get Content-Length
+    size_t content_length = 0;
+    size_t cl_pos = headers_str.find("Content-Length:");
+    if (cl_pos != std::string::npos) {
+        // Find the end of the Content-Length line
+        size_t cl_end = headers_str.find("\r\n", cl_pos);
+        if (cl_end == std::string::npos)
+            cl_end = headers_str.find("\n", cl_pos);
+
+        std::string cl_value = headers_str.substr(cl_pos + 15); // Skip "Content-Length:"
+        if (cl_end != std::string::npos)
+            cl_value = cl_value.substr(0, cl_end - (cl_pos + 15));
+
+        // Trim whitespace
+        size_t start = cl_value.find_first_not_of(" \t");
+        if (start != std::string::npos)
+            cl_value = cl_value.substr(start);
+        size_t end = cl_value.find_last_not_of(" \t\r\n");
+        if (end != std::string::npos)
+            cl_value = cl_value.substr(0, end + 1);
+
+        // Convert to size_t
+        if (!cl_value.empty()) {
+            for (size_t i = 0; i < cl_value.size(); ++i) {
+                if (cl_value[i] < '0' || cl_value[i] > '9') {
+                    content_length = 0;
+                    break;
+                }
+                content_length = content_length * 10 + (cl_value[i] - '0');
+            }
+        }
+    }
+
+    // Check if we have the complete body
+    if (body_received < content_length) {
+        Logger::log(Logger::DEBUG, "Body incomplete: received " + to_string(body_received) +
+                    " bytes, expecting " + to_string(content_length));
+        return;
+    }
+
+    // Parse the complete request
     Request req;
     try {
         req.parse(buffer_str);
@@ -356,27 +403,27 @@ void Server::onCgiPipeOUT(Connection* conn) {
 
 /*
  * Selects a ServerConfig based on the request Host header.
- * Matches Host against server_name in each config.
+ * Matches Host (without port) against server_name in each config.
  * Falls back to first config if no match found.
  */
 const ServerConfig& Server::_selectConfig(const Request& req) const {
-    // Get Host header from request
-    std::string host = req.headers().getHost().name;
+    HostInfo host_info = req.headers().getHost();
+    std::string hostname = host_info.name;
 
-    if (host.empty()) {
+    if (hostname.empty()) {
         // No Host header, use first config
         return _configs[0];
     }
 
-    // Try to match host against server_name in each config
+    // Try to match hostname against server_name in each config
     for (size_t i = 0; i < _configs.size(); ++i) {
-        if (_configs[i].server_name == host) {
-            Logger::log(Logger::DEBUG, "Matched Host: " + host + " to config " + to_string(i));
+        if (_configs[i].server_name == hostname) {
+            Logger::log(Logger::DEBUG, "Matched Host: " + hostname + " to config " + to_string(i));
             return _configs[i];
         }
     }
 
     // No match found, use first config as default
-    Logger::log(Logger::DEBUG, "No matching config for Host: " + host + ", using default");
+    Logger::log(Logger::DEBUG, "No matching config for Host: " + hostname + ", using default");
     return _configs[0];
 }
