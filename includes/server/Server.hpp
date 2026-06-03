@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <map>
+#include <set>
 #include <string>
 #include "config/ServerConfig.hpp"
 #include "server/IServerCallback.hpp"
@@ -18,6 +19,7 @@ class Server : public IServerCallback {
         const std::vector<ServerConfig>& _configs;
         EpollWrapper                     _epoll;
         std::vector<Socket*>             _listeners;
+        std::map<int, int>               _listenerPort;  // listener fd -> port
         std::map<int, Connection*>       _connections;
         bool                             _running;
 

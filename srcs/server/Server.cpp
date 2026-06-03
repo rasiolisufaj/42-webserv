@@ -11,6 +11,7 @@
 #include <cerrno>
 #include <cstring>
 #include <ctime>
+#include <set>
 
 /*
  * Constructor: stores reference to configs, initializes members.
@@ -39,13 +40,18 @@ Server::~Server() {
 }
 
 /*
- * Initializes listening sockets for each server config.
+ * Initializes listening sockets, one per unique host:port pair.
+ * Multiple server blocks on the same address share one socket; ConfigMatcher
+ * handles virtual-host selection per request via the Host header.
  */
 void Server::_initListeners() {
+    std::set<std::string> seen;
     for (size_t i = 0; i < _configs.size(); ++i) {
         const ServerConfig& cfg = _configs[i];
+        std::string key = cfg.host + ":" + to_string(cfg.port);
+        if (!seen.insert(key).second)
+            continue;
 
-        // Create socket and setup
         Socket* listener = new Socket(cfg.host, to_string(cfg.port));
         try {
             listener->setup();
@@ -55,13 +61,12 @@ void Server::_initListeners() {
             throw;
         }
 
-        // Register with epoll
         _epoll.addFd(listener->getFd(), EPOLLIN, listener);
+        _listenerPort[listener->getFd()] = cfg.port;
         _listeners.push_back(listener);
 
         Logger::log(Logger::INFO,
-            "Listening on " + cfg.host + ":" + to_string(cfg.port) +
-            " (fd=" + to_string(listener->getFd()) + ")");
+            "Listening on " + key + " (fd=" + to_string(listener->getFd()) + ")");
     }
 }
 
@@ -121,17 +126,27 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
         return;
     }
 
-    // Find which listener this came from (to select right config)
+    // Resolve port from listener fd, then find first config on that port.
+    // server_cfg is only used for its .port field; ConfigMatcher selects the
+    // real server block per-request via the Host header.
+    std::map<int, int>::iterator pit = _listenerPort.find(listener_fd);
+    if (pit == _listenerPort.end()) {
+        Logger::log(Logger::ERROR, "Could not find port for listener fd: " + to_string(listener_fd));
+        close(client_fd);
+        return;
+    }
+    int port = pit->second;
+
     const ServerConfig* cfg = NULL;
-    for (size_t i = 0; i < _listeners.size(); ++i) {
-        if (_listeners[i]->getFd() == listener_fd) {
+    for (size_t i = 0; i < _configs.size(); ++i) {
+        if (_configs[i].port == port) {
             cfg = &_configs[i];
             break;
         }
     }
 
     if (!cfg) {
-        Logger::log(Logger::ERROR, "Could not find config for listener fd: " + to_string(listener_fd));
+        Logger::log(Logger::ERROR, "No config found for port: " + to_string(port));
         close(client_fd);
         return;
     }
