@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/01 11:54:20 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/02 15:24:25 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/03 15:49:29 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,8 +14,7 @@
 #include <stdexcept>
 
 /*
-Cette requête correspond à quel server block et quelle location
-RequestContext vs vector<ServerConfig>
+obj => Cette requête correspond à quel server block et quelle location // RequestContext vs vector<ServerConfig>
 => RouteMatch { server, location }
 */
 
@@ -39,6 +38,8 @@ bool ConfigMatcher::portMatch(const RequestContext &ctx,
 bool ConfigMatcher::locationMatch(const std::string &request_path,
                                   const std::string &location_path) const
 {
+    // most longer location who has a valide  préfix of request_path
+
     size_t i;
 
     if (location_path.empty() || request_path.empty())
@@ -77,10 +78,10 @@ const ServerConfig *ConfigMatcher::findServer(const RequestContext &ctx,
         if (portMatch(ctx, servers[i]))
         {
             if (serverNameMatch(ctx, servers[i]))
-                return (&servers[i]);
+                return (&servers[i]); // match: PORT + SERVERNAME
 
             if (server_candidate == NULL)
-                server_candidate = &servers[i];
+                server_candidate = &servers[i]; // FALLBACK (first server matching with the port)
         }
         i++;
     }
