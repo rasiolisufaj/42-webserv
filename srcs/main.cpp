@@ -1,12 +1,12 @@
 #include "config/ConfigParser.hpp"
 #include "http/Request.hpp"
 #include "server/Server.hpp"
-#include "cgi/Cgi.hpp"
 #include <fcntl.h>
 #include "http/RequestContext.hpp"
 #include <iostream>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <csignal>
 #include <stdio.h>
 
 int main(int ac, char **av)
@@ -15,6 +15,9 @@ int main(int ac, char **av)
     {
         if (ac != 2)
             throw(std::runtime_error("Enter an argument and try again\n===BYE WEBSERV==="));
+        // Writing to a CGI stdin pipe whose child has exited would raise SIGPIPE
+        // and kill the server; ignore it so write() returns EPIPE instead.
+        std::signal(SIGPIPE, SIG_IGN);
         std::cout << "\n===WebServ is running===\n\n";
         /*--------------------------------------------------------------------*/
 

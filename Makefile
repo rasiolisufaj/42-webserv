@@ -38,7 +38,7 @@ SRC			=	main \
 				http/ConfigMatcher \
 				config/ConfigParser \
 				config/ServerConfig \
-				cgi/Cgi \
+				cgi/CGIHandler \
 				server/Connection \
 				server/EpollWrapper \
 				server/Server \

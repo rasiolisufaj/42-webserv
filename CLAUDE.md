@@ -50,13 +50,11 @@ Three developers, each owns a layer:
 
 ### CGI layer
 
-- `Cgi` (`srcs/cgi/Cgi.cpp`, `includes/cgi/Cgi.hpp`) — fully implemented. Forks a child process via `execute(argv, envp)`, wires up two pipes (stdin/stdout), and returns the child `pid_t` to the caller. The parent retains `getFdInWrite()` (write body to CGI) and `getFdOutRead()` (read CGI response). Key methods:
-  - `setUpEnvironment(ctx, loc)` — builds the CGI env map from a `RequestContext` and `Location`.
-  - `setupArgv(loc, envMap)` — resolves the interpreter from `loc.cgi` keyed by file extension, returns `char**[interpreter, script_path, NULL]`.
-  - `convertMapToEnvp(envMap)` — converts `std::map` to `char**` for `execve`.
-  - `execute(argv, envp)` — creates pipes, `fork()`s, `dup2()`s, calls `execve` in child; parent closes unused ends and returns `pid`.
-  - `free_array(char**)` — frees heap-allocated `char**` arrays.
-- `CgiJob` — plain struct holding job parameters: `interpreter`, `script_path`, `working_dir`, `method`, `query_string`, `url_path`, `body` (`std::vector<char>`), `env` map. Not yet wired into the event loop.
+- `CgiHandler` (`srcs/cgi/CGIHandler.cpp`, `includes/cgi/CGIHandler.hpp`) — static utility class, fully wired into the event loop. Two public methods:
+  - `buildJob(ctx, server, loc, job)` → `bool` — populates a `CgiJob` from a routed request: resolves the interpreter by the script's file extension (`loc.cgi`), the effective document root (`loc.root` or, if empty, `server.root`), splits the script into `working_dir` + bare-filename `script_path` (the child `chdir`s into `working_dir`, so `script_path` is relative and the full path is exported via `PATH_TRANSLATED`/`SCRIPT_FILENAME`), copies the request body, and builds the CGI/1.1 env. Returns `false` (job untouched) when the target isn't a CGI request.
+  - `execute(conn, job)` → `bool` — creates two pipes (parent ends set `O_NONBLOCK` + `FD_CLOEXEC`), `fork()`s, `dup2()`s stdin/stdout in the child, `chdir`s to `working_dir`, `execve`s the interpreter. The parent stores `cgi_in_fd`/`cgi_out_fd`/`cgi_pid`/`cgi_start_time` in the `Connection` and moves it to `CGI_WRITING_BODY`. Private helpers `allocateEnv`/`freeEnv` convert the env map to `char**`.
+- `CgiJob` — plain struct holding job parameters: `interpreter`, `script_path`, `working_dir`, `method`, `query_string`, `url_path`, `body` (`std::vector<char>`), `env` map.
+- **Event-loop integration lives in `Server`** (not in the CGI layer): `_startCgi` registers both pipes with epoll via `CgiPipeWrapper` adapters; `onCgiPipeOUT` streams the request body to stdin then closes it; `onCgiPipeIN` drains stdout into `conn->cgi_raw_output`; `_finalizeCgi` reaps the child + `_buildCgiResponse` parses the CGI headers (`Status:` → status line) into an HTTP response (502 on empty/malformed); `_checkTimeouts`/`_timeoutCgi` enforce a 5s-inactivity / 60s-hard cap (→ 504). See the Server/event layer below.
 
 ### Server/event layer
 
@@ -64,8 +62,9 @@ Three developers, each owns a layer:
 - `IEventHandler` — pure interface. `virtual void handle(uint32_t event, IServerCallback &callback)`. Both `Socket` and `Connection` implement this.
 - `IServerCallback` — pure interface implemented by `Server`. Callbacks: `onNewConnection(client_fd, listener_fd)`, `onClientIN(conn)`, `onClientOUT(conn)`, `onCloseConnection(fd, conn)`, `onCgiPipeIN(conn)`, `onCgiPipeOUT(conn)`.
 - `Socket` — listening socket, implements `IEventHandler`. `setup()` creates, binds, and sets `O_NONBLOCK` + `FD_CLOEXEC`. `handle()` drains the accept queue in a loop and calls `callback.onNewConnection()`.
-- `Connection` — per-client state machine implementing `IEventHandler`. States: `READING_HEADER → READING_BODY → SENDING_RESPONSE → CGI_WRITING_BODY → CGI_READING_OUTPUT → CLOSED`. Holds `in_buffer`/`out_buffer` (`std::vector<char>`), `read_idx`/`write_idx`, timeout fields (`last_activity`, `first_byte_time`), file-streaming fields (`file_fd`, `file_bytes_sent`, `is_streaming_file`), upload-streaming fields (`upload_fd`, `body_bytes_expected`, `is_streaming_upload`), and `chunk_decoded`/`chunk_raw_offset` for resumable chunked decoding. `handle()` dispatches `EPOLLIN` → `onClientIN`, `EPOLLOUT` → `onClientOUT`, `EPOLLERR/EPOLLHUP` → `onCloseConnection`.
-- `Server` — owns `EpollWrapper`, `std::vector<Socket*>`, and `std::map<int, Connection*>`. `run()` drives the event loop (`epoll.wait(1000ms)` → cast `data.ptr` → `IEventHandler::handle()`). `_selectConfig()` picks `ServerConfig` by matching `Host` header against `server_name`. `_buildResponse()` is currently a **Phase 6 stub** that echoes method/target; real file serving and CGI are not yet wired. `onCgiPipeIN`/`onCgiPipeOUT` are stub placeholders.
+- `Connection` — per-client state machine implementing `IEventHandler`. States: `READING_HEADER → READING_BODY → SENDING_RESPONSE → CGI_WRITING_BODY → CGI_READING_OUTPUT → CLOSED`. Holds `in_buffer`/`out_buffer` (`std::vector<char>`), `read_idx`/`write_idx`, timeout fields (`last_activity`, `first_byte_time`), CGI fields (`cgi_in_fd`, `cgi_out_fd`, `cgi_pid`, `cgi_start_time`, `cgi_sent_idx`, `cgi_raw_output`, `cgi_job`, and the `cgi_in_wrapper`/`cgi_out_wrapper` pipe adapters — all initialized in the ctor; the dtor closes the pipes, `SIGKILL`s + reaps the child, and frees the wrappers as a safety net), file-streaming fields (`file_fd`, `file_bytes_sent`, `is_streaming_file`), upload-streaming fields (`upload_fd`, `body_bytes_expected`, `is_streaming_upload`), and `chunk_decoded`/`chunk_raw_offset` for resumable chunked decoding. `handle()` dispatches `EPOLLIN` → `onClientIN`, `EPOLLOUT` → `onClientOUT`, `EPOLLERR/EPOLLHUP` → `onCloseConnection`.
+- `CgiPipeWrapper` (declared in `Connection.hpp`) — a tiny `IEventHandler` adapter holding `{Connection* conn, bool is_read_end}`, used as the `data.ptr` for the two CGI pipe fds. `handle()` forwards events to `onCgiPipeIN` (read end) or `onCgiPipeOUT` (write end), so CGI pipes ride the same single epoll loop as sockets.
+- `Server` — owns `EpollWrapper`, the shared `const std::vector<ServerConfig>& _configs`, `std::vector<Socket*> _listeners`, `std::map<int,int> _listenerPort` (listener fd → port), `std::map<int, Connection*> _connections`, and `_last_timeout_check` (throttles the timeout sweep to ~1Hz). Multiple server blocks on the same address share one listening socket. `run()` drives the event loop (`epoll.wait(1000ms)` → `_checkTimeouts()` → cast `data.ptr` → `IEventHandler::handle()`). Routing is delegated: `onClientIN` builds a `RequestContext` (arrival port from `_listenerPort`), calls `ConfigMatcher::match(ctx, _configs)`, then **dispatches CGI vs static** — if `CgiHandler::buildJob` matches, it calls `_startCgi` (forks the child, parks the client socket on `EPOLLRDHUP`, registers both pipes); otherwise it falls through to `_buildResponse(req, ctx, cfg, loc, conn)`, still a **Phase 6 stub** that echoes method/target (static file serving / error pages / autoindex / redirects not yet wired). CGI callbacks are fully implemented: `onCgiPipeOUT` (stream body → stdin), `onCgiPipeIN` (drain stdout), `_finalizeCgi`/`_buildCgiResponse` (reap + parse → HTTP, 502 on empty/malformed), `_teardownCgi`/`_closeCgiInPipe` (epoll-safe pipe/child cleanup), `_checkTimeouts`/`_timeoutCgi` (5s-inactivity / 60s-hard → 504). `_sendError()` queues a minimal error response and arms `EPOLLOUT`. `main()` installs `SIG_IGN` for `SIGPIPE` so a write to a dead CGI child returns `EPIPE` instead of killing the server.
 - `SessionManager` — stub (empty `.cpp`).
 
 ### Utilities
@@ -79,16 +78,16 @@ Three developers, each owns a layer:
 - Config parsing (`ConfigParser`, `ServerConfig`, `Location`)
 - Full HTTP parsing (`Request`, `RequestContext`, `Headers`, `RequestLine`, `RequestTarget`, `ChunkDecoder`)
 - `ConfigMatcher` — routes requests to server block + location block
-- CGI execution (`Cgi::execute`, `setUpEnvironment`, `setupArgv`)
 - Epoll event loop (`EpollWrapper`, `Socket`, `Server::run()`)
 - Connection state machine (`Connection`, `onClientIN`, `onClientOUT`, `onCloseConnection`)
+- **CGI end-to-end** (`CgiHandler::buildJob`/`execute` + `Server` dispatch and pipe callbacks): GET with query string, POST body streamed to stdin, `Status:` header → HTTP status, 502 on empty/malformed output, 5s-inactivity / 60s-hard timeout → 504, child kill+reap (no zombies), `O_NONBLOCK` + `FD_CLOEXEC` on pipe fds, `SIGPIPE` ignored.
 
 **Not yet implemented / stubs:**
-- `Server::_buildResponse()` — Phase 6 stub: echoes method/target as plain text
-- `Server::onCgiPipeIN` / `onCgiPipeOUT` — CGI pipe integration with epoll
-- `SessionManager` — empty `.cpp`
-- `O_NONBLOCK` + `FD_CLOEXEC` on `Cgi` pipe fds before forking
+- `Server::_buildResponse()` — Phase 6 stub: echoes method/target as plain text (the non-CGI path)
 - Real response building: static file serving, error pages, autoindex, redirects, upload handling
+- Non-CGI connection timeouts (client slowloris guard; `last_activity`/`first_byte_time` exist but only CGI timeouts are enforced)
+- CGI POST body currently comes from `ctx.body()` (fully-parsed request); not yet sourced from streamed/chunked uploads (`Connection::chunk_decoded`)
+- `SessionManager` — empty `.cpp`
 - Connection timeout enforcement (`last_activity`, `first_byte_time` fields exist but no timeout logic)
 
 ## Config File Syntax
@@ -124,7 +123,7 @@ server {
 
 - **C++98 only** — no `auto`, range-for, `std::to_string`, lambdas, or C++11 headers.
 - **Single epoll loop** — all sockets (listening + client + CGI pipes) go through one `EpollWrapper::wait()` call.
-- `fork()` is only permitted inside `Cgi::execute()` for CGI execution. All fds must have `FD_CLOEXEC` set before forking.
+- `fork()` is only permitted inside `CgiHandler::execute()` for CGI execution. All fds must have `FD_CLOEXEC` set before forking.
 - All sockets must be set non-blocking (`O_NONBLOCK`).
 - The server must never crash or hang regardless of input.
 

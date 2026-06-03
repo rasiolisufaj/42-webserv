@@ -8,7 +8,7 @@
 #include "../includes/http/RequestContext.hpp"
 #include "../includes/server/Connection.hpp"
 #include "../includes/server/IServerCallback.hpp"
-#include "../includes/cgi/Cgi.hpp"
+#include "../includes/cgi/CGIHandler.hpp"
 #include "../includes/utils/Logger.hpp"
 
 // Mock callback for testing Connection

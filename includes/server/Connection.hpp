@@ -1,11 +1,32 @@
 #pragma once
 #include "IEventHandler.hpp"
+#include "cgi/CgiJob.hpp"
 #include <cstddef>
 #include <ctime>
 #include <vector>
 #include <string>
 struct ServerConfig;
 class Connection;
+
+class CgiPipeWrapper : public IEventHandler
+{
+    public:
+        Connection *conn;
+        bool is_read_end;
+
+        /*
+            * Constructor for creating a new CgiPipeWrapper.
+            * Parameters:
+            * - c: pointer to the associated Connection object
+            * - is_read: true if this wrapper is for the CGI stdout pipe, false if for stdin
+        */
+        CgiPipeWrapper(Connection *c, bool is_read) : conn(c), is_read_end(is_read) {}
+
+        /*
+            * Forwards epoll events to the correct CGI callback on the Server.
+        */
+        virtual void handle(uint32_t event, IServerCallback &callback);
+};
 
 class Connection : public IEventHandler
 {
@@ -42,6 +63,19 @@ class Connection : public IEventHandler
         
         // KEEP ALIVE
         bool closeAfterWrite;
+
+        // Cgi Process Management
+        int cgi_in_fd;
+        int cgi_out_fd;
+        pid_t cgi_pid;
+        std::time_t cgi_start_time;
+        std::vector<char> cgi_raw_output;
+        std::string pending_extra_headers;
+
+        CgiJob cgi_job;
+        size_t  cgi_sent_idx;
+        CgiPipeWrapper *cgi_in_wrapper;
+        CgiPipeWrapper *cgi_out_wrapper;
 
         // File Streaming (for large files)
         int      file_fd;

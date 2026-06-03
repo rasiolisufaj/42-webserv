@@ -4,6 +4,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <ctime>
 #include "config/ServerConfig.hpp"
 #include "server/IServerCallback.hpp"
 #include "server/EpollWrapper.hpp"
@@ -22,6 +23,7 @@ class Server : public IServerCallback {
         std::map<int, int>               _listenerPort;  // listener fd -> port
         std::map<int, Connection*>       _connections;
         bool                             _running;
+        std::time_t                      _last_timeout_check;  // throttles the sweep to ~1Hz
 
         /*
          * Initializes listening sockets for each ServerConfig.
@@ -30,10 +32,63 @@ class Server : public IServerCallback {
         void _initListeners();
 
         /*
+         * Periodic (≈1Hz) sweep that enforces CGI timeouts: aborts any CGI that
+         * has been idle too long (no I/O progress) or running past the hard cap,
+         * killing the child and replying 504 Gateway Timeout.
+         */
+        void _checkTimeouts();
+
+        /*
+         * Aborts an in-flight CGI exchange due to timeout: kills/reaps the child,
+         * tears down the pipes, and queues a 504 Gateway Timeout to the client.
+         */
+        void _timeoutCgi(Connection* conn);
+
+        /*
          * Sends a minimal error response (status line + Connection: close, no body).
          * Sets conn state to SENDING_RESPONSE and arms EPOLLOUT.
          */
         void _sendError(Connection* conn, int fd, int status, const std::string& reason);
+
+        /*
+         * Tears down any CGI state attached to a connection: removes the CGI
+         * pipe fds from epoll, closes them, kills and reaps the child, and frees
+         * the pipe wrappers. Safe to call when no CGI is active (no-op). Must run
+         * before the Connection is destroyed so epoll never references a freed
+         * wrapper pointer.
+         */
+        void _teardownCgi(Connection* conn);
+
+        /*
+         * Launches CGI for an already-built conn->cgi_job: forks the child,
+         * detaches the client socket from read events, and registers the CGI
+         * stdin pipe so the request body can be streamed. On failure, sends 500.
+         */
+        void _startCgi(Connection* conn, int client_fd);
+
+        /*
+         * Removes the CGI stdin pipe from epoll, closes it, and frees its
+         * wrapper. Called once the request body has been fully written (or on a
+         * write error) so the child sees EOF on stdin. Idempotent.
+         */
+        void _closeCgiInPipe(Connection* conn);
+
+        /*
+         * Finishes a CGI exchange: reaps the child, tears down the pipes, then
+         * either turns the collected CGI output into an HTTP response (arming the
+         * client socket for EPOLLOUT) or, on read error / empty / malformed
+         * output, sends 502 Bad Gateway.
+         */
+        void _finalizeCgi(Connection* conn, bool readError);
+
+        /*
+         * Parses the raw CGI output (conn->cgi_raw_output) into a full HTTP
+         * response: maps a CGI "Status:" header to the status line, passes the
+         * remaining CGI headers through, and appends a computed Content-Length +
+         * Connection: close. Returns an empty string if the output has no valid
+         * header/body separator (caller should treat that as 502).
+         */
+        std::string _buildCgiResponse(Connection* conn) const;
 
         /*
          * Builds an HTTP response for the given request.
