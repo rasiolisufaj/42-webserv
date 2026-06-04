@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/01 11:54:20 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/03 15:49:29 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/04 10:51:39 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,7 +14,7 @@
 #include <stdexcept>
 
 /*
-obj => Cette requête correspond à quel server block et quelle location // RequestContext vs vector<ServerConfig>
+=> RequestContext vs vector<ServerConfig> (find the server{} block && the location{} block)
 => RouteMatch { server, location }
 */
 

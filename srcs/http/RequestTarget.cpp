@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/05/21 10:29:13 by thodavid          #+#    #+#             */
-/*   Updated: 2026/05/21 13:48:36 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/04 14:13:10 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,6 +14,9 @@
 #include "http/utils_http.hpp"
 #include <exception>
 #include <stdexcept>
+#include <vector>
+
+//%2F = representation hexadec de 2F = '/'
 
 static void split_path_query(const std::string &target, std::string &path, std::string &query)
 {
@@ -92,6 +95,63 @@ static void validate_decoded_path(const std::string &s)
     }
 }
 
+static std::string remove_dot_segments(const std::string &path)
+{
+    std::vector<std::string> segments;
+    std::string segment;
+    std::string result;
+    size_t i;
+    size_t start;
+    bool is_dir;
+
+    i = 0;
+    is_dir = false;
+    while (i < path.size())
+    {
+        while (i < path.size() && path[i] == '/') //skip /
+            i++;
+        if (i >= path.size())
+        {
+            is_dir = true; // finish by /
+            break;
+        }
+        start = i;
+        while (i < path.size() && path[i] != '/') //read un segment
+            i++;
+        segment = path.substr(start, i - start);
+
+        if (segment == ".")
+        {
+            if (i >= path.size())
+                is_dir = true; // "/a/." => 'a' dir
+        }
+        else if (segment == "..")
+        {
+            if (segments.empty())
+                throw(std::runtime_error("400 Bad Request: path escapes root"));
+            segments.pop_back();//go back (rm from the top of the stack)
+            if (i >= path.size())
+                is_dir = true; // "/a/b/.." -> "/a/"
+        }
+        else
+            segments.push_back(segment);
+    }
+
+    if (segments.empty())
+        return ("/");
+
+    i = 0;
+    while (i < segments.size())
+    {
+        result += "/" + segments[i];
+        i++;
+    }
+    if (is_dir)
+        result += "/";
+    return (result);
+}
+
+/* choix securite (like nginx) decode before normalisation */
 void RequestTarget::parse(const std::string &target)
 {
     std::string raw_path;
@@ -99,8 +159,9 @@ void RequestTarget::parse(const std::string &target)
 
     split_path_query(target, raw_path, raw_query);
 
-    _path = percent_decode(raw_path);
+    _path = percent_decode(raw_path); //decode before normalisation (representation en %HEXA => char ) 
     validate_decoded_path(_path);
+    _path = remove_dot_segments(_path); // normalisation after decode
     _query = raw_query;
 }
 
