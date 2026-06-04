@@ -1,5 +1,6 @@
 #include "config/ConfigParser.hpp"
 #include "http/Request.hpp"
+#include "http/Response.hpp"
 #include "server/Server.hpp"
 #include <fcntl.h>
 #include "http/RequestContext.hpp"
@@ -82,10 +83,27 @@ int main(int ac, char **av)
             3. ResponseBuilder
             4. HttpHandler
         */
-        std::cout << "\n+++CONFIG PARSER CONFFIle+++\n";
+
+
+        /*--------------------------------------------------------------------*/
+
+
+        /*
+        Response
+        */
+
+        std::cout << "\n+++TEST FOR RESPONSE+++\n";
+
+        Response response;
+
+        response.setStatus(200, "OK");
+        response.setHeader("Content-Type", "text/html");
+        response.setHeader("Connection", "close");
+        response.setBody("<html><body>Hello Webserv</body></html>\n");
+
+        std::cout << response.toString();
 
         // ConfigMatcher
-
 
         /*--------------------------------------------------------------------*/
 

@@ -3,7 +3,7 @@
 #include "utils/Logger.hpp"
 #include "http/Request.hpp"
 #include "http/RequestContext.hpp"
-#include "http/ConfigMatcher.hpp"
+#include "config/ConfigMatcher.hpp"
 #include "http/Headers.hpp"
 #include "http/utils_http.hpp"
 #include "cgi/CGIHandler.hpp"
@@ -177,6 +177,7 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
     }
 
     _connections[client_fd] = conn;
+    Logger::log(Logger::INFO, "New connection accepted (fd=" + to_string(client_fd) + ")");
     Logger::log(Logger::INFO, "New connection accepted (fd=" + to_string(client_fd) + ")");
 }
 
