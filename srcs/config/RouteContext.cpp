@@ -1,22 +1,22 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   EffectiveRoute.cpp                                 :+:      :+:    :+:   */
+/*   RouteContext.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/02 14:35:44 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/02 15:51:17 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/05 12:16:53 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "config/EffectiveRoute.hpp"
+#include "config/RouteContext.hpp"
 #include <stdexcept>
 
-EffectiveRouteBuilder::EffectiveRouteBuilder() {}
-EffectiveRouteBuilder::~EffectiveRouteBuilder() {}
+RouteContextBuilder::RouteContextBuilder() {}
+RouteContextBuilder::~RouteContextBuilder() {}
 
-std::string EffectiveRouteBuilder::resolveString(const std::string &location_value,
+std::string RouteContextBuilder::resolveString(const std::string &location_value,
                                                  const std::string &server_value) const
 {
     if (!location_value.empty())
@@ -24,7 +24,7 @@ std::string EffectiveRouteBuilder::resolveString(const std::string &location_val
     return (server_value);
 }
 
-size_t EffectiveRouteBuilder::resolveSize(size_t location_value,
+size_t RouteContextBuilder::resolveSize(size_t location_value,
                                           size_t server_value) const
 {
     if (location_value != 0)
@@ -36,7 +36,7 @@ size_t EffectiveRouteBuilder::resolveSize(size_t location_value,
     README:
     allow_methods default: GET HEAD (if empty)
 */
-std::vector<std::string> EffectiveRouteBuilder::resolveMethods(const std::vector<std::string> &location_methods) const
+std::vector<std::string> RouteContextBuilder::resolveMethods(const std::vector<std::string> &location_methods) const
 {
     std::vector<std::string> methods;
 
@@ -49,14 +49,14 @@ std::vector<std::string> EffectiveRouteBuilder::resolveMethods(const std::vector
     return (methods);
 }
 
-EffectiveRoute EffectiveRouteBuilder::build(const RouteMatch &match) const
+RouteContext RouteContextBuilder::build(const RouteMatch &match) const
 {
-    EffectiveRoute route;
+    RouteContext route;
 
     if (match.server == NULL)
-        throw(std::runtime_error("EffectiveRouteBuilder: NULL server"));
+        throw(std::runtime_error("RouteContext: NULL server"));
     if (match.location == NULL)
-        throw(std::runtime_error("EffectiveRouteBuilder: NULL location"));
+        throw(std::runtime_error("RouteContext: NULL location"));
 
     route.server = match.server;
     route.location = match.location;

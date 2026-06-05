@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   EffectiveRoute.hpp                                 :+:      :+:    :+:   */
+/*   RouteContext.hpp                                 :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/02 14:30:32 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/02 14:39:03 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/05 12:12:33 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -18,7 +18,7 @@
 #include <vector>
 #include <cstddef>
 
-struct EffectiveRoute
+struct RouteContext
 {
     const ServerConfig *server;
     const Location *location;
@@ -39,7 +39,7 @@ struct EffectiveRoute
     std::map<std::string, std::string> cgi;
 };
 
-class EffectiveRouteBuilder
+class RouteContextBuilder
 {
 private:
     std::string resolveString(const std::string &location_value,
@@ -51,8 +51,8 @@ private:
     std::vector<std::string> resolveMethods(const std::vector<std::string> &location_methods) const;
 
 public:
-    EffectiveRouteBuilder();
-    ~EffectiveRouteBuilder();
+    RouteContextBuilder();
+    ~RouteContextBuilder();
 
-    EffectiveRoute build(const RouteMatch &match) const;
+    RouteContext build(const RouteMatch &match) const;
 };
