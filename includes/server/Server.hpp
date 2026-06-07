@@ -13,6 +13,7 @@
 #include "http/RequestContext.hpp"
 
 class Connection;
+struct RouteMatch;
 
 class Server : public IServerCallback {
     private:
@@ -45,10 +46,12 @@ class Server : public IServerCallback {
         void _timeoutCgi(Connection* conn);
 
         /*
-         * Sends a minimal error response (status line + Connection: close, no body).
-         * Sets conn state to SENDING_RESPONSE and arms EPOLLOUT.
+         * Queues an error response and arms EPOLLOUT. Routes through
+         * make_error_response(conn->server_cfg) so a pre-routing failure (parse /
+         * routing) still serves the matching custom error_page (or a generated
+         * page) with a body, and always sets Connection: close.
          */
-        void _sendError(Connection* conn, int fd, int status, const std::string& reason);
+        void _sendError(Connection* conn, int fd, int status);
 
         /*
          * Tears down any CGI state attached to a connection: removes the CGI
@@ -91,12 +94,13 @@ class Server : public IServerCallback {
         std::string _buildCgiResponse(Connection* conn) const;
 
         /*
-         * Builds an HTTP response for the given request.
-         * Phase 6: stub that echoes method/target. Phase 7+: real response generation.
+         * Builds the HTTP response for a routed (non-CGI) request: flattens the
+         * RouteMatch into a RouteContext (server/location inheritance) and runs it
+         * through ResponseBuilder, returning the serialized response. A failure to
+         * resolve the route context (e.g. unresolved root) yields a 500 page.
+         * The response always carries Connection: close (keep-alive not yet wired).
          */
-        std::string _buildResponse(const Request& req, const RequestContext& ctx,
-                                   const ServerConfig* cfg, const Location* loc,
-                                   Connection* conn) const;
+        std::string _buildResponse(const RequestContext& ctx, const RouteMatch& match) const;
 
         Server(const Server& other);
         Server& operator=(const Server& rhs);

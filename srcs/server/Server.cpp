@@ -4,8 +4,12 @@
 #include "http/Request.hpp"
 #include "http/RequestContext.hpp"
 #include "config/ConfigMatcher.hpp"
+#include "config/RouteContext.hpp"
 #include "http/Headers.hpp"
 #include "http/utils_http.hpp"
+#include "http/ResponseBuilder.hpp"
+#include "http/Response.hpp"
+#include "http/HttpStatus.hpp"
 #include "cgi/CGIHandler.hpp"
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -242,7 +246,7 @@ void Server::onClientIN(Connection* conn) {
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("Header parse error: ") + e.what());
         conn->in_buffer.clear();
-        _sendError(conn, fd, 400, "Bad Request");
+        _sendError(conn, fd, status_from_exception(e.what()));
         return;
     }
 
@@ -259,7 +263,7 @@ void Server::onClientIN(Connection* conn) {
         } catch (const std::exception& e) {
             Logger::log(Logger::WARNING, std::string("Content-Length error: ") + e.what());
             conn->in_buffer.clear();
-            _sendError(conn, fd, 400, "Bad Request");
+            _sendError(conn, fd, status_from_exception(e.what()));
             return;
         }
         if (body_received < content_length) {
@@ -277,7 +281,7 @@ void Server::onClientIN(Connection* conn) {
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("Request parse error: ") + e.what());
         conn->in_buffer.clear();
-        _sendError(conn, fd, 400, "Bad Request");
+        _sendError(conn, fd, status_from_exception(e.what()));
         return;
     }
 
@@ -290,41 +294,36 @@ void Server::onClientIN(Connection* conn) {
         ctx.build(req, conn->server_cfg->port);
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("RequestContext build error: ") + e.what());
-        _sendError(conn, fd, 400, "Bad Request");
+        _sendError(conn, fd, status_from_exception(e.what()));
         return;
     }
 
     // Route: ConfigMatcher selects the matching server block and location block.
     ConfigMatcher matcher;
-    const ServerConfig* matched_server = NULL;
-    const Location*     matched_location = NULL;
+    RouteMatch routeMatch;
+    routeMatch.server = NULL;
+    routeMatch.location = NULL;
     try {
-        RouteMatch route = matcher.match(ctx, _configs);
-        matched_server   = route.server;
-        matched_location = route.location;
+        routeMatch = matcher.match(ctx, _configs);
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("Routing error: ") + e.what());
-        std::string msg = e.what();
-        if (msg.find("404") != std::string::npos)
-            _sendError(conn, fd, 404, "Not Found");
-        else
-            _sendError(conn, fd, 400, "Bad Request");
+        _sendError(conn, fd, status_from_exception(e.what()));
         return;
     }
 
     // CGI dispatch: if the matched location maps this target's extension to an
     // interpreter, launch the CGI child instead of building a static response.
     // The response is then produced asynchronously by the CGI pipe callbacks.
-    if (matched_server && matched_location) {
+    if (routeMatch.server && routeMatch.location) {
         CgiJob job;
-        if (CgiHandler::buildJob(ctx, *matched_server, *matched_location, job)) {
+        if (CgiHandler::buildJob(ctx, *routeMatch.server, *routeMatch.location, job)) {
             conn->cgi_job = job;
             _startCgi(conn, fd);
             return;
         }
     }
 
-    std::string response = _buildResponse(req, ctx, matched_server, matched_location, conn);
+    std::string response = _buildResponse(ctx, routeMatch);
     conn->out_buffer.assign(response.begin(), response.end());
     conn->write_idx = 0;
     conn->setState(Connection::SENDING_RESPONSE);
@@ -436,7 +435,7 @@ void Server::_teardownCgi(Connection* conn) {
 void Server::_startCgi(Connection* conn, int client_fd) {
     if (!CgiHandler::execute(conn, conn->cgi_job)) {
         Logger::log(Logger::ERROR, "CGI execute failed");
-        _sendError(conn, client_fd, 500, "Internal Server Error");
+        _sendError(conn, client_fd, 500);
         return;
     }
 
@@ -459,7 +458,7 @@ void Server::_startCgi(Connection* conn, int client_fd) {
     } catch (const std::exception& e) {
         Logger::log(Logger::ERROR, std::string("CGI epoll setup failed: ") + e.what());
         _teardownCgi(conn);
-        _sendError(conn, client_fd, 500, "Internal Server Error");
+        _sendError(conn, client_fd, 500);
         return;
     }
 
@@ -486,35 +485,45 @@ void Server::_closeCgiInPipe(Connection* conn) {
 }
 
 /*
- * Builds an HTTP response. Phase 6 stub: echoes method/target.
- * Phase 7+: real file serving, CGI, error pages, redirects.
+ * Builds the HTTP response for a routed (non-CGI) request. Flattens the
+ * RouteMatch into a RouteContext (resolving server/location inheritance), then
+ * delegates to ResponseBuilder for the full GET/HEAD/POST/DELETE/return/error
+ * decision. If the route context cannot be resolved (e.g. unresolved root /
+ * upload_store), we cannot consult error_page, so we emit a default 500 page.
+ * Connection: close is forced because keep-alive is not yet implemented
+ * (onClientOUT closes the socket once the response is drained).
  */
-std::string Server::_buildResponse(const Request& req, const RequestContext& ctx,
-                                    const ServerConfig* cfg, const Location* loc,
-                                    Connection* conn) const {
-    (void)ctx;
-    (void)cfg;
-    (void)loc;
-    (void)conn;
+std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& match) const {
+    RouteContext route;
+    try {
+        RouteContextBuilder routeBuilder;
+        route = routeBuilder.build(match);
+    } catch (const std::exception& e) {
+        Logger::log(Logger::WARNING, std::string("RouteContext build error: ") + e.what());
+        Response err(500, reason_phrase(500));
+        err.setHeader("Content-Type", "text/html");
+        err.setBody(default_error_body(500));
+        err.setHeader("Connection", "close");
+        return err.toString();
+    }
 
-    std::string method = req.requestLine().method();
-    std::string target = req.requestLine().target();
-
-    std::string body = "Method: " + method + "\nTarget: " + target + "\n";
-    return "HTTP/1.1 200 OK\r\n"
-           "Content-Type: text/plain\r\n"
-           "Content-Length: " + to_string(body.size()) + "\r\n"
-           "Connection: close\r\n"
-           "\r\n" + body;
+    ResponseBuilder builder;
+    Response resp = builder.build(ctx, route);
+    resp.setHeader("Connection", "close");
+    return resp.toString();
 }
 
 /*
- * Sends a minimal error response and arms EPOLLOUT.
+ * Queues an error response and arms EPOLLOUT. Built via make_error_response so a
+ * custom error_page (resolved against the server root) is served when configured,
+ * falling back to a generated page. conn->server_cfg is the port-default server
+ * block — the best error_page source available before routing completes.
  * onClientOUT will drain and then set state=CLOSED; Connection::handle() closes.
  */
-void Server::_sendError(Connection* conn, int fd, int status, const std::string& reason) {
-    std::string response = "HTTP/1.1 " + to_string(status) + " " + reason +
-                           "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+void Server::_sendError(Connection* conn, int fd, int status) {
+    Response resp = make_error_response(status, conn->server_cfg);
+    resp.setHeader("Connection", "close");
+    std::string response = resp.toString();
     conn->out_buffer.assign(response.begin(), response.end());
     conn->write_idx = 0;
     conn->setState(Connection::SENDING_RESPONSE);
@@ -577,7 +586,7 @@ void Server::_finalizeCgi(Connection* conn, bool readError) {
 
     if (response.empty()) {
         Logger::log(Logger::WARNING, "CGI produced no valid response -> 502");
-        _sendError(conn, client_fd, 502, "Bad Gateway");
+        _sendError(conn, client_fd, 502);
         return;
     }
 
@@ -709,7 +718,7 @@ void Server::_timeoutCgi(Connection* conn) {
     Logger::log(Logger::WARNING, "CGI timeout (pid=" + to_string(conn->cgi_pid) +
                                  ") on fd=" + to_string(client_fd) + " -> 504");
     _teardownCgi(conn);
-    _sendError(conn, client_fd, 504, "Gateway Timeout");
+    _sendError(conn, client_fd, 504);
 }
 
 /*

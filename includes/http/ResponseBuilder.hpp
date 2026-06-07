@@ -16,6 +16,15 @@
 #include "http/Response.hpp"
 #include "config/RouteContext.hpp"
 #include <string>
+
+/*
+    Builds an error Response: serves the server's custom error_page (resolved
+    against the server root) when present and readable, otherwise a generated
+    default page. Shared by ResponseBuilder's internal error path AND by the
+    server's pre-routing error path (parse / routing failures), so both honor
+    error_page and the real status code. NULL server => generated page only.
+*/
+Response make_error_response(int code, const ServerConfig *server);
  
 /*
     ResponseBuilder: RequestContext + RouteContext => Response
@@ -55,8 +64,11 @@ private:
     Response redirectSlash(const RequestContext &ctx) const;
  
     // --- ResponseBuilderWrite.cpp : ecriture filesystem ---
+    // Resout la cible d'un upload/suppression: upload_store + basename(path).
+    // Partage par POST et DELETE pour qu'ils ne divergent jamais.
+    std::string uploadTargetPath(const RequestContext &ctx, const RouteContext &route) const;
     Response handlePost(const RequestContext &ctx, const RouteContext &route) const;
-    Response handleDelete(const RouteContext &route, const std::string &file_path) const;
+    Response handleDelete(const RequestContext &ctx, const RouteContext &route) const;
  
     // --- ResponseBuilderError.cpp : erreurs & return ---
     Response handleReturn(const RouteContext &route) const;

@@ -24,29 +24,40 @@
 #include <fstream>
  
 /*
+    Cible commune POST/DELETE: upload_store + dernier segment du path.
+    Le nom de fichier est sain PARCE QUE le path est canonique (pas de "..",
+    pas de '\0', et le dernier segment ne contient pas de '/'). POST et DELETE
+    passent par ici pour viser EXACTEMENT le meme fichier (un fichier uploade
+    via POST /x est supprimable via DELETE /x).
+*/
+std::string ResponseBuilder::uploadTargetPath(const RequestContext &ctx, const RouteContext &route) const
+{
+    std::string store;
+    std::string filename;
+
+    store = route.upload_store;
+    if (store.empty() || store[store.size() - 1] != '/')
+        store += "/";
+    filename = ctx.path().substr(ctx.path().find_last_of('/') + 1);
+    return (store + filename);
+}
+
+/*
     Upload statique (le CGI est intercepte avant, par le dispatcher).
-    Nom de fichier = dernier segment du path. SECURITE: ce nom est sain
-    PARCE QUE le path est canonique (pas de "..", pas de '\0', et le
-    dernier segment ne contient pas de '/').
 */
 Response ResponseBuilder::handlePost(const RequestContext &ctx, const RouteContext &route) const
 {
     std::string filename;
-    std::string store;
     std::string dest;
     struct stat st;
     bool existed;
- 
+
     if (ctx.path()[ctx.path().size() - 1] == '/')
         return (errorResponse(403, route)); // pas d'upload "vers un repertoire"
- 
+
     filename = ctx.path().substr(ctx.path().find_last_of('/') + 1);
- 
-    store = route.upload_store;
-    if (store[store.size() - 1] != '/')
-        store += "/";
-    dest = store + filename;
- 
+    dest = uploadTargetPath(ctx, route);
+
     existed = (stat(dest.c_str(), &st) == 0);
     if (existed && S_ISDIR(st.st_mode))
         return (errorResponse(403, route));
@@ -77,17 +88,25 @@ Response ResponseBuilder::handlePost(const RequestContext &ctx, const RouteConte
     return (r);
 }
  
-Response ResponseBuilder::handleDelete(const RouteContext &route, const std::string &file_path) const
+Response ResponseBuilder::handleDelete(const RequestContext &ctx, const RouteContext &route) const
 {
+    std::string target;
     struct stat st;
- 
-    if (stat(file_path.c_str(), &st) != 0)
+
+    // Meme cible que POST: on supprime depuis upload_store, pas depuis root,
+    // sinon un fichier uploade ne serait jamais supprimable.
+    if (ctx.path()[ctx.path().size() - 1] == '/')
+        return (errorResponse(403, route)); // pas de suppression "d'un repertoire"
+
+    target = uploadTargetPath(ctx, route);
+
+    if (stat(target.c_str(), &st) != 0)
         return (errorResponse(404, route));
- 
+
     if (S_ISDIR(st.st_mode))
         return (errorResponse(403, route)); // pas de suppression de repertoires
- 
-    if (unlink(file_path.c_str()) != 0)
+
+    if (unlink(target.c_str()) != 0)
     {
         if (errno == EACCES || errno == EPERM)
             return (errorResponse(403, route));

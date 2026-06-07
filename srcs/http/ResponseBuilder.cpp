@@ -108,7 +108,7 @@ Response ResponseBuilder::dispatch(const RequestContext &ctx, const RouteContext
     if (ctx.method() == "POST")
         return (handlePost(ctx, route));
     if (ctx.method() == "DELETE")
-        return (handleDelete(route, file_path));
+        return (handleDelete(ctx, route));
 
     //501: Not Implemented:
     return (errorResponse(501, route));
