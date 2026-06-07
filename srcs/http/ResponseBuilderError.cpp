@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/05 14:24:52 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/05 14:32:44 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/07 15:23:11 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -23,9 +23,9 @@
 #include <sstream>
  
 /*
-    return 301 /new   => statut + Location (le parser garantit l'URL en 3xx)
-    return 200 "txt"  => statut + body = texte (semantique nginx)
-    return 404        => statut + body genere
+    return 301 /new   => statut + Location
+    return 200 "txt"  => statut + body = texte (like nginx)
+    return 404        => statut + body generate
 */
 Response ResponseBuilder::handleReturn(const RouteContext &route) const
 {
@@ -50,10 +50,7 @@ Response ResponseBuilder::handleReturn(const RouteContext &route) const
     return (r);
 }
  
-/*
-    Cherche une error_page custom dans le config; page absente ou
-    illisible => fallback genere. JAMAIS de recursion errorResponse().
-*/
+// Cherche une error_page custom dans le config; page absente => fallback 
 Response ResponseBuilder::errorResponse(int code, const RouteContext &route) const
 {
     Response r(code, reason_phrase(code));

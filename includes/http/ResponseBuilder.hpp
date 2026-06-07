@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/02 14:07:13 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/05 14:18:17 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/07 11:25:22 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -18,26 +18,23 @@
 #include <string>
  
 /*
-    ResponseBuilder: RequestContext + RouteContext => Response (statique only)
- 
-    Une classe, un contrat (ce header), mais une implementation decoupee
-    par responsabilite — un fichier = un type d'effet de bord:
+    ResponseBuilder: RequestContext + RouteContext => Response
  
         ResponseBuilder.cpp       decision pure (l'arbre), aucun I/O
         ResponseBuilderGet.cpp    LECTURE filesystem (GET/HEAD, autoindex)
         ResponseBuilderWrite.cpp  ECRITURE filesystem (POST, DELETE)
         ResponseBuilderError.cpp  fabrication des reponses erreur/return
  
-    Modules purs associes: HttpStatus (codes), MimeTypes (Content-Type).
+    HttpStatus (codes), MimeTypes (Content-Type).
  
-    Ordre de decision (inspire des phases nginx):
+    Ordre de decision (nginx):
         1. return (directive de config, gagne toujours)
         2. 405 methode non autorisee (+ header Allow)
         3. 413 body trop gros
         4. mapping root + path (semantique "root" nginx)
         5. dispatch GET/HEAD | POST | DELETE
  
-    Frontiere CGI: detectee AVANT d'appeler build() (dispatcher serveur).
+    Frontiere CGI: detectee AVANT d'appeler build() (dispatcher serveur)
 */
  
 class ResponseBuilder

@@ -1,10 +1,24 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   main.cpp                                           :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/06/07 12:08:17 by thodavid          #+#    #+#             */
+/*   Updated: 2026/06/07 12:42:12 by thodavid         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "config/ConfigParser.hpp"
+#include "config/ConfigMatcher.hpp"
 #include "http/Request.hpp"
+#include "http/RequestContext.hpp"
 #include "http/Response.hpp"
+#include "http/ResponseBuilder.hpp"
 #include "server/Server.hpp"
 #include "cgi/Cgi.hpp"
 #include <fcntl.h>
-#include "http/RequestContext.hpp"
 #include <iostream>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -16,32 +30,8 @@ int main(int ac, char **av)
     {
         if (ac != 2)
             throw(std::runtime_error("Enter an argument and try again\n===BYE WEBSERV==="));
-        std::cout << "\n===WebServ is running===\n\n";
         /*--------------------------------------------------------------------*/
-
-        /*
-        parsing RQUEST
-        */
-
-        Request request;
-        RequestContext ctx;
-        std::string raw_get =
-            "GET /cgi-bin/cgi_post.py?Name=Leny&proyect=Webserv HTTP/1.1\r\n"
-            "Host: localhost\r\n"
-            "User-Agent: curl/8.5.0\r\n"
-            "\r\n";
-
-        std::cout << "\n+++CONFIG PARSER RQST+++\n";
-        request.parse(raw_get);
-        ctx.build(request, 8080);
-        std::cout << "method: " << ctx.method() << "\n";
-        std::cout << "target: " << ctx.target() << "\n";
-        /*--------------------------------------------------------------------*/
-
-        /*
-        parsing CONFIGFilE
-        */
-
+        // ---         parsing CONFIGFilE         ---
         std::cout << "\n+++CONFIG PARSER CONFFIle+++\n";
 
         ConfigParser Parser;
@@ -50,64 +40,62 @@ int main(int ac, char **av)
             return (EXIT_FAILURE);
 
         const std::vector<ServerConfig> &all_servers = Parser.getServers();
-        for (size_t i = 0; i < all_servers.size(); i++)
-        {
-            std::cout << "call me Maybe\n";
-            all_servers[i].print_servers();
-        }
+        // for (size_t i = 0; i < all_servers.size(); i++)
+        //     all_servers[i].print_servers();
         // const std::vector<ServerConfig> &all_servers = Parser.getServers();
         // const ServerConfig &my_server = all_servers[0];
         // const Location &loc = my_server.locations[0];
+        std::cout << "PARSING CONFIG ✅\n";
         /*--------------------------------------------------------------------*/
 
-        /*
-        RQST vs CONFIG
-        */
+        /*--------------------------------------------------------------------*/
+        // ---         parsing RQUEST         ---
+        std::cout << "\n+++PARSING REQUEST+++\n";
+        Request request;
+        RequestContext ctx;
+        std::string raw_get =
+            "GET /cgi-bin/cgi_post.py?Name=Leny&proyect=Webserv HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "User-Agent: curl/8.5.0\r\n"
+            "\r\n";
 
-        /*
-            ----> Which SERV
-            ----> Which LOCATION
-            ----> Check METHOD
-            ----> Check
-            ----> BUILD RESPONSE_STRUCT
-
-            ConfigMatcher       -> trouve server/location
-            ResponseBuilder     -> construit la réponse
-            HttpHandler         -> orchestre parser + matcher + builder
-
-            1. ConfigMatcher
-            2. Response
-            3. ResponseBuilder
-            4. HttpHandler
-        */
-
-
+        request.parse(raw_get);
+        // ctx.build(request, conn->server_cfg->port);   <===========!!!!
+        ctx.build(request, 8080);
+        std::cout << "PARSING REQUEST ✅\n";
+        
         /*--------------------------------------------------------------------*/
 
+        /*--------------------------------------------------------------------*/
+        // ---         RQST vs CONFIG         ---
+        std::cout << "\n+++RQST   MATCH  SERVER+++\n";
+        ConfigMatcher confMatch;
+        RouteMatch routeMatch;
 
-        /*
-        Response
-        */
+        routeMatch = confMatch.match(ctx, all_servers);
+        std::cout << "Request-Server matching : " << routeMatch.server->server_name << '\n';
+        //std::cout << "Location matching : " << routeMatch.location.path << '\n';
+        std::cout << "MATCHING REQUEST-CONF ✅\n";
 
+        
+        /*--------------------------------------------------------------------*/
+        // ---         RESPONSE         ---
         std::cout << "\n+++TEST FOR RESPONSE+++\n";
 
-        Response response;
+        Response response(404, "Not Found bruuh"); //CTOR with no param = 200 OK by default
 
-        response.setStatus(200, "OK");
-        response.setHeader("Content-Type", "text/html");
-        response.setHeader("Connection", "close");
-        response.setBody("<html><body>Hello Webserv</body></html>\n");
-
+        std::cout << "Staus ligne Pattern✅:\n00000";
         std::cout << response.toString();
-
-        // ConfigMatcher
+        std::cout << "\n00000\n";
 
         /*--------------------------------------------------------------------*/
-
-        /*
-        SERVER ENGINE
-        */
-
+        // ---         RESP BUILD         ---
+        ResponseBuilder rspBuild;
+        //Response Realresponse = rspBuild.build(ctx, ROUTE  CTX);
+        
+        
+        /*--------------------------------------------------------------------*/
+        // ---         SERVER ENGINE         ---
         std::cout << "\n+++SERVER CORE LOG+++\n";
 
         try
@@ -120,6 +108,9 @@ int main(int ac, char **av)
             std::cerr << "Server error: " << e.what() << '\n';
             return (EXIT_FAILURE);
         }
+
+
+
     }
 
     catch (std::runtime_error &e)

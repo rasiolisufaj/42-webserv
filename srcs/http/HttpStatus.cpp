@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/05 14:25:40 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/05 14:42:13 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/07 15:24:12 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -44,11 +44,11 @@ std::string reason_phrase(int code)
     }
 }
  
-int status_from_exception(const char *what)
+int status_from_exception(const char *s)
 {
     int code;
  
-    code = std::atoi(what);
+    code = std::atoi(s);
     if (code < 100 || code > 599)
         return (500);
     return (code);
