@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/02 14:07:04 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/07 15:12:59 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/07 16:23:39 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -22,27 +22,15 @@ static void apply_head(Response &r)
 {
     std::string content_length;
 
+    //set Content-Length if has Content-Length HEADER
     if (r.hasHeader("Content-Length"))
         content_length = r.getHeader("Content-Length");
 
+    //No Body (no body love me ouuuuuuh) Content-Length == 0
     r.setBody("");
+    //fix Content-Length == 0 for the real Content-Length size
     if (!content_length.empty())
         r.setHeader("Content-Length", content_length);
-}
-
-
-std::string ResponseBuilder::mapPath(const RequestContext &ctx, const RouteContext &route) const
-{
-    std::string root;
-
-    root = route.root;
-    if (root.size() > 1 && root[root.size() - 1] == '/')
-        root.erase(root.size() - 1); // evite "root//path"
-
-    if (ctx.path().empty() || ctx.path()[0] != '/')
-        throw (std::runtime_error("500 Internal Server Error: non-canonical path"));
-
-    return (root + ctx.path());
 }
 
 //Handle Method
@@ -76,14 +64,30 @@ std::string ResponseBuilder::allowHeaderValue(const RouteContext &route) const
     return (value);
 }
 
+std::string ResponseBuilder::mapPath(const RequestContext &ctx, const RouteContext &route) const
+{
+    std::string root;
+
+    root = route.root;
+    if (root.size() > 1 && root[root.size() - 1] == '/')
+        root.erase(root.size() - 1); // evite double slash "root//path"
+
+    if (ctx.path().empty() || ctx.path()[0] != '/')
+        throw (std::runtime_error("500 Internal Server Error: non-canonical path"));
+
+    return (root + ctx.path());
+}
+
 //ENGINE
 Response ResponseBuilder::dispatch(const RequestContext &ctx, const RouteContext &route) const
 {
     std::string file_path;
 
+    //return_code aka shortcut 
     if (route.return_code != -1) //in serverConfig.hpp(l.28) response in confFile
         return (handleReturn(route));
 
+    //Method non autorize
     if (!isMethodAllowed(ctx.method(), route))
     {
         Response r = errorResponse(405, route);
@@ -91,11 +95,14 @@ Response ResponseBuilder::dispatch(const RequestContext &ctx, const RouteContext
         return (r);
     }
 
+    //413 Request Entity Too Large
     if (ctx.bodySize() > route.client_max_body_size)
         return (errorResponse(413, route));
 
+    //mapping (create the real path (system))
     file_path = mapPath(ctx, route);
 
+    //handle GET HEAD POST DELETE => file_path for stat()/open()
     if (ctx.method() == "GET" || ctx.method() == "HEAD")
         return (handleGetHead(ctx, route, file_path));
     if (ctx.method() == "POST")
@@ -103,6 +110,7 @@ Response ResponseBuilder::dispatch(const RequestContext &ctx, const RouteContext
     if (ctx.method() == "DELETE")
         return (handleDelete(route, file_path));
 
+    //501: Not Implemented:
     return (errorResponse(501, route));
 }
 
@@ -114,13 +122,13 @@ Response ResponseBuilder::build(const RequestContext &ctx, const RouteContext &r
     {
         r = dispatch(ctx, route);
     }
+    //handle exception => error_page du config
     catch (const std::exception &e)
     {
-        // toute exception interne (invariant viole, I/O...) est convertie
-        // ici pour beneficier des error_page du config
         r = errorResponse(status_from_exception(e.what()), route);
     }
 
+    //HEAD is build like a GET but rm the body
     if (ctx.method() == "HEAD")
         apply_head(r);
 
