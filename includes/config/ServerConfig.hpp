@@ -27,7 +27,7 @@ struct Location {
     autoindex(false), 
     return_code(-1),
     return_redir(""),
-    client_max_body_size((size_t)-1)
+    client_max_body_size((size_t)-1) // =>18 446 744 073 709 551 615 == SIZE_MAX
     {
         allowed_methods.push_back("GET");
         allowed_methods.push_back("HEAD");

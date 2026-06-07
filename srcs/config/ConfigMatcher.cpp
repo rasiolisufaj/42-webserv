@@ -6,7 +6,7 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/01 11:54:20 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/04 10:51:39 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/07 13:12:21 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -89,13 +89,14 @@ const ServerConfig *ConfigMatcher::findServer(const RequestContext &ctx,
     if (server_candidate != NULL)
         return (server_candidate);
 
-    throw(std::runtime_error("400 Bad Request: no matching server"));
+    throw(std::runtime_error("500 Internal Server Error: no matching server"));
 }
 
 const Location *ConfigMatcher::findLocation(const RequestContext &ctx,
                                             const ServerConfig &server) const
 {
     const Location *best;
+    static const Location default_location; // STATIC!!! Null Object: les defauts du ctor
     size_t best_len;
     size_t i;
 
@@ -116,8 +117,7 @@ const Location *ConfigMatcher::findLocation(const RequestContext &ctx,
     }
 
     if (best == NULL)
-        throw(std::runtime_error("404 Not Found: no matching location"));
-
+        return (&default_location);
     return (best);
 }
 

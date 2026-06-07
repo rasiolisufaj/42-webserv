@@ -6,7 +6,7 @@
 #    By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/05/05 15:49:06 by thodavid          #+#    #+#              #
-#    Updated: 2026/06/02 13:52:42 by thodavid         ###   ########.fr        #
+#    Updated: 2026/06/07 11:03:51 by thodavid         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -28,18 +28,23 @@ INCLUDES	= -Iincludes
 #####
 
 SRC			=	main \
-				http/RequestLine \
-				http/Headers \
-				http/Request \
-				http/Response \
 				http/ChunkDecod \
-				http/RequestTarget \
-				http/utils_http \
+				http/Headers \
+				http/HttpStatus \
+				http/MimeTypes \
+				http/Request \
 				http/RequestContext \
+				http/RequestLine \
+				http/RequestTarget \
+				http/Response \
 				http/ResponseBuilder \
+				http/ResponseBuilderError \
+				http/ResponseBuilderGet \
+				http/ResponseBuilderWrite \
+				http/utils_http \
 				config/ConfigMatcher \
-				config/EffectiveRoute \
 				config/ConfigParser \
+				config/RouteContext \
 				config/ServerConfig \
 				cgi/CGIHandler \
 				server/Connection \
@@ -74,6 +79,8 @@ clean:
 
 fclean: clean
 	rm -f $(NAME)
+
+re: fclean all
 
 test: $(NAME)
 	@c++ $(CXXFLAGS) $(INCLUDES) tests/test_main.cpp $(filter-out obj/main.o,$(OBJ)) -o tests/test_main
