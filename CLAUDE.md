@@ -12,8 +12,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 make          # build the webserv binary
 make clean    # remove object files
 make fclean   # remove object files and binary
+make re       # fclean then rebuild
 make test     # build and run tests/test_main.cpp (linked against all objects except main.o)
 ```
+
+Objects live in `obj/`; the `make test` binary is written to `tests/test_main`. Builds use dependency tracking (`-MMD -MP`).
 
 **Compiler flags:** `-std=c++98 -Wall -Wextra -Werror -MMD -MP`
 

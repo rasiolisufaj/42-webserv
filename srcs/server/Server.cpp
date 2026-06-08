@@ -16,7 +16,6 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <unistd.h>
-#include <cerrno>
 #include <cstring>
 #include <ctime>
 #include <set>
@@ -206,14 +205,15 @@ void Server::onClientIN(Connection* conn) {
         return;
     }
     if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return;
-        Logger::log(Logger::WARNING, "recv error: " + std::string(strerror(errno)));
+        // We only read after epoll signals readiness and read once per event
+        // (epoll is level-triggered), so a negative return is a real error:
+        // close the connection. errno must not be inspected after a read.
         conn->setState(Connection::CLOSED);
         return;
     }
 
     conn->in_buffer.insert(conn->in_buffer.end(), buf, buf + n);
+    conn->last_activity = std::time(NULL);  // progress: reset the idle timer
     Logger::log(Logger::DEBUG, "Read " + to_string(n) + " bytes, in_buffer now " +
                 to_string(conn->in_buffer.size()) + " bytes");
 
@@ -266,6 +266,20 @@ void Server::onClientIN(Connection* conn) {
             _sendError(conn, fd, status_from_exception(e.what()));
             return;
         }
+        // Reject an over-large body before buffering it: if Content-Length
+        // exceeds the largest client_max_body_size of any route on this port, no
+        // route could accept it, so answer 413 now instead of reading the whole
+        // body into memory (the precise per-route limit is still enforced later
+        // in ResponseBuilder for bodies within this maximum).
+        size_t limit = _maxBodyLimitForPort(conn->server_cfg->port);
+        if (limit != (size_t)-1 && content_length > limit) {
+            Logger::log(Logger::WARNING, "Content-Length " + to_string(content_length) +
+                        " exceeds max body size " + to_string(limit) + " -> 413");
+            conn->in_buffer.clear();
+            _sendError(conn, fd, 413);
+            return;
+        }
+
         if (body_received < content_length) {
             Logger::log(Logger::DEBUG, "Body incomplete: received " + to_string(body_received) +
                         " bytes, expecting " + to_string(content_length));
@@ -353,14 +367,14 @@ void Server::onClientOUT(Connection* conn) {
     ssize_t n = send(fd, &conn->out_buffer[conn->write_idx], remaining, MSG_NOSIGNAL);
 
     if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return;
-        Logger::log(Logger::WARNING, "send failed: " + std::string(strerror(errno)));
+        // Sent only in response to EPOLLOUT; a negative return is a real error
+        // (errno must not be inspected after a write), so close the connection.
         conn->setState(Connection::CLOSED);
         return;
     }
 
     conn->write_idx += static_cast<size_t>(n);
+    conn->last_activity = std::time(NULL);  // progress: reset the idle timer
 
     if (conn->write_idx >= conn->out_buffer.size()) {
         Logger::log(Logger::DEBUG, "Response fully sent to fd=" + to_string(fd));
@@ -531,31 +545,26 @@ void Server::_sendError(Connection* conn, int fd, int status) {
 }
 
 /*
- * CGI stdout pipe is readable: drain it into conn->cgi_raw_output until the pipe
- * would block (EAGAIN) or reaches EOF. EOF (read == 0) means the child finished
- * writing its response, so we finalize. A hard read error finalizes as 502.
+ * CGI stdout pipe is readable: read once into conn->cgi_raw_output. epoll is
+ * level-triggered, so if more data remains EPOLLIN fires again on the next loop
+ * iteration. EOF (read == 0) means the child finished writing its response, so we
+ * finalize. A negative return is a read error and finalizes as 502 (errno must
+ * not be inspected after a read).
  */
 void Server::onCgiPipeIN(Connection* conn) {
     char buf[65536];
 
-    while (true) {
-        ssize_t n = read(conn->cgi_out_fd, buf, sizeof(buf));
-        if (n > 0) {
-            conn->cgi_raw_output.insert(conn->cgi_raw_output.end(), buf, buf + n);
-            conn->last_activity = std::time(NULL);  // progress: reset inactivity timer
-            continue;
-        }
-        if (n == 0) {                       // EOF: response complete
-            _finalizeCgi(conn, false);
-            return;
-        }
-        // n < 0
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return;                         // no more data for now; wait for next EPOLLIN
-        Logger::log(Logger::WARNING, "CGI stdout read failed: " + std::string(strerror(errno)));
-        _finalizeCgi(conn, true);
+    ssize_t n = read(conn->cgi_out_fd, buf, sizeof(buf));
+    if (n > 0) {
+        conn->cgi_raw_output.insert(conn->cgi_raw_output.end(), buf, buf + n);
+        conn->last_activity = std::time(NULL);  // progress: reset inactivity timer
         return;
     }
+    if (n == 0) {                       // EOF: response complete
+        _finalizeCgi(conn, false);
+        return;
+    }
+    _finalizeCgi(conn, true);           // read error -> 502
 }
 
 /*
@@ -675,6 +684,40 @@ std::string Server::_buildCgiResponse(Connection* conn) const {
 }
 
 /*
+ * Largest client_max_body_size across every server block on `port` and all of
+ * their locations, used as an early 413 guard. A location value of (size_t)-1
+ * means "inherit from the server" (see RouteContextBuilder::resolveSize), so it
+ * resolves to the server-level limit. Returns (size_t)-1 if any matching route
+ * is unlimited (in which case no early rejection is possible).
+ */
+size_t Server::_maxBodyLimitForPort(int port) const {
+    size_t max = 0;
+    for (size_t i = 0; i < _configs.size(); ++i) {
+        const ServerConfig& cfg = _configs[i];
+        if (cfg.port != port)
+            continue;
+        if (cfg.locations.empty()) {
+            // No route: a request here resolves to the server-level limit.
+            if (cfg.client_max_body_size == (size_t)-1)
+                return (size_t)-1;
+            if (cfg.client_max_body_size > max)
+                max = cfg.client_max_body_size;
+            continue;
+        }
+        for (size_t j = 0; j < cfg.locations.size(); ++j) {
+            size_t eff = (cfg.locations[j].client_max_body_size != (size_t)-1)
+                             ? cfg.locations[j].client_max_body_size
+                             : cfg.client_max_body_size;
+            if (eff == (size_t)-1)
+                return (size_t)-1;
+            if (eff > max)
+                max = eff;
+        }
+    }
+    return max;
+}
+
+/*
  * Throttled (~1Hz) sweep over all connections. A CGI exchange is aborted with
  * 504 when it has either made no I/O progress for CGI_INACTIVITY seconds or run
  * longer than the absolute CGI_HARD cap. Guarantees the "never hang" rule even
@@ -688,25 +731,40 @@ void Server::_checkTimeouts() {
 
     const std::time_t CGI_INACTIVITY = 5;   // no stdin/stdout progress
     const std::time_t CGI_HARD       = 60;  // absolute wall-clock cap
+    const std::time_t CLIENT_TIMEOUT = 30;  // idle ordinary client (slowloris guard)
 
-    // Collect first, then act: _timeoutCgi rewires epoll but never touches the
-    // _connections map, so this is just defensive clarity.
+    // Collect first, then act. _timeoutCgi only rewires epoll (keeps the
+    // connection alive to send 504), while idle clients are closed outright via
+    // onCloseConnection (which deletes the Connection and erases the map entry),
+    // so we must not mutate the map while iterating it.
     std::vector<Connection*> expired;
+    std::vector<Connection*> idle;
     for (std::map<int, Connection*>::iterator it = _connections.begin();
          it != _connections.end(); ++it) {
         Connection* conn = it->second;
-        if (conn->state != Connection::CGI_WRITING_BODY &&
-            conn->state != Connection::CGI_READING_OUTPUT)
-            continue;
-        if (conn->cgi_pid <= 0)
-            continue;
-        if ((now - conn->cgi_start_time) >= CGI_HARD ||
-            (now - conn->last_activity)  >= CGI_INACTIVITY)
-            expired.push_back(conn);
+        bool is_cgi = (conn->state == Connection::CGI_WRITING_BODY ||
+                       conn->state == Connection::CGI_READING_OUTPUT);
+        if (is_cgi) {
+            if (conn->cgi_pid <= 0)
+                continue;
+            if ((now - conn->cgi_start_time) >= CGI_HARD ||
+                (now - conn->last_activity)  >= CGI_INACTIVITY)
+                expired.push_back(conn);
+        } else {
+            // No socket I/O for CLIENT_TIMEOUT seconds: a stalled or slowloris
+            // client. Close it so a request can never hang the connection forever.
+            if ((now - conn->last_activity) >= CLIENT_TIMEOUT)
+                idle.push_back(conn);
+        }
     }
 
     for (size_t i = 0; i < expired.size(); ++i)
         _timeoutCgi(expired[i]);
+    for (size_t i = 0; i < idle.size(); ++i) {
+        Logger::log(Logger::INFO, "Closing idle client fd=" +
+                    to_string(idle[i]->getFd()));
+        onCloseConnection(idle[i]->getFd(), idle[i]);
+    }
 }
 
 /*
@@ -736,11 +794,10 @@ void Server::onCgiPipeOUT(Connection* conn) {
         size_t remaining = body.size() - conn->cgi_sent_idx;
         ssize_t n = write(conn->cgi_in_fd, &body[conn->cgi_sent_idx], remaining);
         if (n < 0) {
-            // EAGAIN: pipe buffer full, retry on next EPOLLOUT.
-            // Other errors (e.g. EPIPE: child exited/closed stdin) — stop writing.
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                return;
-            Logger::log(Logger::WARNING, "CGI stdin write failed: " + std::string(strerror(errno)));
+            // Written only in response to EPOLLOUT. errno must not be inspected
+            // after a write, so treat any negative return as the child having
+            // closed/exited (EPIPE): stop feeding stdin and move to reading its
+            // output. The stdin pipe is closed so the child sees EOF.
             _closeCgiInPipe(conn);
             conn->setState(Connection::CGI_READING_OUTPUT);
             return;

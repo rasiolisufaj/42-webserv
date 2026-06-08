@@ -33,11 +33,22 @@ class Server : public IServerCallback {
         void _initListeners();
 
         /*
-         * Periodic (≈1Hz) sweep that enforces CGI timeouts: aborts any CGI that
-         * has been idle too long (no I/O progress) or running past the hard cap,
-         * killing the child and replying 504 Gateway Timeout.
+         * Periodic (≈1Hz) sweep that enforces timeouts. For CGI exchanges: aborts
+         * any CGI idle too long (no I/O progress) or past the hard cap, killing the
+         * child and replying 504. For ordinary client connections: closes any that
+         * has made no socket I/O for CLIENT_TIMEOUT seconds, so a stalled or
+         * slowloris client can never hold a connection open indefinitely.
          */
         void _checkTimeouts();
+
+        /*
+         * Returns the largest client_max_body_size configured across every server
+         * block listening on `port` and all their locations. Used as a safe early
+         * 413 guard: a request whose Content-Length exceeds this maximum cannot be
+         * accepted by any route on that port, so the body need not be buffered.
+         * Returns (size_t)-1 (unlimited) if any matching route is unlimited.
+         */
+        size_t _maxBodyLimitForPort(int port) const;
 
         /*
          * Aborts an in-flight CGI exchange due to timeout: kills/reaps the child,

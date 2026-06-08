@@ -184,11 +184,8 @@ void Socket::handle(uint32_t event, IServerCallback &callback)
       client_fd = this->acceptConnection();
       if (client_fd == -1)
       {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-          break;
-        Logger::log(Logger::WARNING,
-                    "acceptConnection failed on fd: " + to_string(this->_fd) +
-                        " error: " + std::string(std::strerror(errno)));
+        // accept queue drained (would-block) or a transient error: in either
+        // case stop draining. errno must not be inspected after the syscall.
         break;
       }
       callback.onNewConnection(client_fd, this->_fd);

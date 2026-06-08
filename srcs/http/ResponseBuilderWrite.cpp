@@ -20,7 +20,6 @@
 #include "http/HttpStatus.hpp"
 #include <sys/stat.h>
 #include <unistd.h>
-#include <cerrno>
 #include <fstream>
  
 /*
@@ -107,11 +106,7 @@ Response ResponseBuilder::handleDelete(const RequestContext &ctx, const RouteCon
         return (errorResponse(403, route)); // pas de suppression de repertoires
 
     if (unlink(target.c_str()) != 0)
-    {
-        if (errno == EACCES || errno == EPERM)
-            return (errorResponse(403, route));
         return (errorResponse(500, route));
-    }
  
     // 204: par definition pas de body, et pas de Content-Length
     // (le framing est implicite: il n'y a rien a lire)
