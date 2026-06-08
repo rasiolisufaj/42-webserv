@@ -1,9 +1,10 @@
 #include "cgi/CGIHandler.hpp"
 #include "utils/Logger.hpp"
-#include <cerrno>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /*
@@ -39,6 +40,14 @@ bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
 
   // Full filesystem path to the script, then split into dir + filename.
   std::string full = root + url_path;
+
+  // The extension maps to an interpreter, but the script must actually exist as
+  // a regular file. If not, this isn't a runnable CGI target: return false so the
+  // static path handles it and emits a 404 (with the configured error page).
+  struct stat st;
+  if (stat(full.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+    return false;
+
   size_t slash = full.rfind('/');
   std::string dir = (slash != std::string::npos) ? full.substr(0, slash) : ".";
   std::string file = (slash != std::string::npos) ? full.substr(slash + 1) : full;
@@ -72,6 +81,27 @@ bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
     env["CONTENT_TYPE"] = ctx.headers().getHeader("Content-Type");
   else
     env["CONTENT_TYPE"] = "";
+
+  // Expose every request header to the CGI as HTTP_<NAME> (CGI/1.1), so the full
+  // request reaches the script (e.g. cookies, host, custom headers). Keys are
+  // stored lowercase; uppercase them and map '-' to '_'. Content-Type and
+  // Content-Length are already exported as their own CGI vars, so skip them.
+  const std::map<std::string, std::string> &fields = ctx.headers().fields();
+  for (std::map<std::string, std::string>::const_iterator it = fields.begin();
+       it != fields.end(); ++it)
+  {
+    if (it->first == "content-type" || it->first == "content-length")
+      continue;
+    std::string key = "HTTP_";
+    for (size_t i = 0; i < it->first.size(); ++i)
+    {
+      char c = it->first[i];
+      key += (c == '-') ? '_'
+                        : static_cast<char>(std::toupper(
+                              static_cast<unsigned char>(c)));
+    }
+    env[key] = it->second;
+  }
 
   return true;
 }
@@ -121,10 +151,18 @@ bool CgiHandler::execute(Connection *conn, const CgiJob &job)
   int pipe_in[2];
   int pipe_out[2];
 
-  // 1. Pipe Creation
-  if (pipe(pipe_in) < 0 || pipe(pipe_out) < 0)
+  // 1. Pipe Creation. Created separately so a failure on the second pipe doesn't
+  // leak the first pipe's fds.
+  if (pipe(pipe_in) < 0)
   {
     Logger::log(Logger::ERROR, "CGI pipe creation failed.");
+    return false;
+  }
+  if (pipe(pipe_out) < 0)
+  {
+    Logger::log(Logger::ERROR, "CGI pipe creation failed.");
+    close(pipe_in[0]);
+    close(pipe_in[1]);
     return false;
   }
 

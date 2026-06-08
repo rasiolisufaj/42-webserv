@@ -328,7 +328,11 @@ void Server::onClientIN(Connection* conn) {
     // CGI dispatch: if the matched location maps this target's extension to an
     // interpreter, launch the CGI child instead of building a static response.
     // The response is then produced asynchronously by the CGI pipe callbacks.
-    if (routeMatch.server && routeMatch.location) {
+    // CGI bypasses ResponseBuilder's 405 check, so we gate it on the route's
+    // accepted methods here: a disallowed method falls through to _buildResponse,
+    // which emits the canonical 405 (+ Allow header + custom error page).
+    if (routeMatch.server && routeMatch.location &&
+        _isMethodAllowed(routeMatch, ctx.method())) {
         CgiJob job;
         if (CgiHandler::buildJob(ctx, *routeMatch.server, *routeMatch.location, job)) {
             conn->cgi_job = job;
@@ -507,6 +511,23 @@ void Server::_closeCgiInPipe(Connection* conn) {
  * Connection: close is forced because keep-alive is not yet implemented
  * (onClientOUT closes the socket once the response is drained).
  */
+/*
+ * Mirrors RouteContextBuilder::resolveMethods: the location's allow_methods if
+ * non-empty, otherwise the GET/HEAD default. Used to gate CGI dispatch so a
+ * method outside the route's accepted set is rejected (405) just like the static
+ * path, instead of silently executing the script.
+ */
+bool Server::_isMethodAllowed(const RouteMatch& match, const std::string& method) const {
+    const std::vector<std::string>& methods = match.location->allowed_methods;
+    if (methods.empty())
+        return method == "GET" || method == "HEAD";
+    for (size_t i = 0; i < methods.size(); ++i) {
+        if (methods[i] == method)
+            return true;
+    }
+    return false;
+}
+
 std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& match) const {
     RouteContext route;
     try {

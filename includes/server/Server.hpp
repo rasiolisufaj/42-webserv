@@ -113,6 +113,15 @@ class Server : public IServerCallback {
          */
         std::string _buildResponse(const RequestContext& ctx, const RouteMatch& match) const;
 
+        /*
+         * Whether `method` is in the matched route's accepted methods, using the
+         * same resolution as RouteContextBuilder (location's allow_methods if set,
+         * else GET HEAD). CGI dispatch bypasses ResponseBuilder's 405 check, so the
+         * caller uses this to gate CGI: a disallowed method falls through to the
+         * static path, which emits the canonical 405 (+ Allow + error page).
+         */
+        bool _isMethodAllowed(const RouteMatch& match, const std::string& method) const;
+
         Server(const Server& other);
         Server& operator=(const Server& rhs);
 
