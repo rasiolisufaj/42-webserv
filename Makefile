@@ -47,6 +47,7 @@ SRC			=	main \
 				config/RouteContext \
 				config/ServerConfig \
 				cgi/CGIHandler \
+				server/CgiManager \
 				server/Connection \
 				server/EpollWrapper \
 				server/Server \

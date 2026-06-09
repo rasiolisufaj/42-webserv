@@ -18,7 +18,7 @@ make test     # build and run tests/test_main.cpp (linked against all objects ex
 
 Objects live in `obj/`; the `make test` binary is written to `tests/test_main`. Builds use dependency tracking (`-MMD -MP`).
 
-The `Makefile` compiles an **explicit `SRC` list** (not a wildcard glob), so a new `.cpp` must be added to that list to be built. Note: `srcs/server/Server_Example.cpp` / `includes/server/Server_Example.hpp` are an untracked **scratchpad** (they reference a nonexistent `HttpHandler.hpp`), are *not* in the `SRC` list, and are not part of the build.
+The `Makefile` compiles an **explicit `SRC` list** (not a wildcard glob), so a new `.cpp` must be added to that list to be built.
 
 **Compiler flags:** `-std=c++98 -Wall -Wextra -Werror -MMD -MP`
 

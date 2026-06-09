@@ -10,11 +10,9 @@
 #include "http/ResponseBuilder.hpp"
 #include "http/Response.hpp"
 #include "http/HttpStatus.hpp"
-#include "cgi/CGIHandler.hpp"
+#include "server/CgiManager.hpp"
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include <sys/wait.h>
-#include <signal.h>
 #include <unistd.h>
 #include <cstring>
 #include <ctime>
@@ -42,7 +40,8 @@ static size_t findSeq(const std::vector<char>& buf, size_t from,
  * Constructor: stores reference to configs, initializes members.
  */
 Server::Server(const std::vector<ServerConfig>& configs)
-    : _configs(configs), _running(false), _last_timeout_check(std::time(NULL)) {}
+    : _configs(configs), _running(false), _last_timeout_check(std::time(NULL)),
+      _cgi(*this, _epoll) {}
 
 /*
  * Destructor: closes all connections and listening sockets.
@@ -472,20 +471,16 @@ void Server::_processRequest(Connection* conn) {
     }
 
     // CGI dispatch: if the matched location maps this target's extension to an
-    // interpreter, launch the CGI child instead of building a static response.
-    // The response is then produced asynchronously by the CGI pipe callbacks.
-    // CGI bypasses ResponseBuilder's 405 check, so we gate it on the route's
-    // accepted methods here: a disallowed method falls through to _buildResponse,
-    // which emits the canonical 405 (+ Allow header + custom error page).
+    // interpreter, _cgi.dispatch launches the CGI child instead of building a
+    // static response (the reply is then produced asynchronously by the CGI pipe
+    // callbacks). CGI bypasses ResponseBuilder's 405 check, so we gate it on the
+    // route's accepted methods here: a disallowed method (or a non-CGI target)
+    // falls through to _buildResponse, which emits the canonical 405 (+ Allow
+    // header + custom error page) or the static response.
     if (routeMatch.server && routeMatch.location &&
-        _isMethodAllowed(routeMatch, ctx.method())) {
-        CgiJob job;
-        if (CgiHandler::buildJob(ctx, *routeMatch.server, *routeMatch.location, job)) {
-            conn->cgi_job = job;
-            _startCgi(conn);
-            return;
-        }
-    }
+        _isMethodAllowed(routeMatch, ctx.method()) &&
+        _cgi.dispatch(conn, ctx, routeMatch))
+        return;
 
     _queueResponse(conn, _buildResponse(ctx, routeMatch, conn->keep_alive));
 }
@@ -543,7 +538,7 @@ void Server::onCloseConnection(int fd, Connection* conn) {
 
     // Release any CGI pipes/child first so epoll never holds a dangling wrapper.
     if (conn)
-        _teardownCgi(conn);
+        _cgi.teardown(conn);
 
     try {
         _epoll.removeFd(fd);
@@ -556,90 +551,6 @@ void Server::onCloseConnection(int fd, Connection* conn) {
         delete it->second;
         _connections.erase(it);
     }
-}
-
-/*
- * Removes and closes the CGI pipe fds, reaps the child, and frees the pipe
- * wrappers. Idempotent: each resource is guarded so repeated calls are no-ops.
- * The Connection destructor also closes/reaps as a safety net, but doing it here
- * lets us pull the fds out of epoll while the wrappers are still alive.
- */
-void Server::_teardownCgi(Connection* conn) {
-    _closeCgiInPipe(conn);  // stdin pipe fd + its wrapper (shared with the EOF path)
-    if (conn->cgi_out_fd != -1) {
-        try { _epoll.removeFd(conn->cgi_out_fd); }
-        catch (const std::exception& e) {
-            Logger::log(Logger::WARNING, std::string("CGI out-pipe epoll remove: ") + e.what());
-        }
-        close(conn->cgi_out_fd);
-        conn->cgi_out_fd = -1;
-    }
-    if (conn->cgi_pid > 0) {
-        kill(conn->cgi_pid, SIGKILL);
-        waitpid(conn->cgi_pid, NULL, 0);
-        conn->cgi_pid = -1;
-    }
-    delete conn->cgi_out_wrapper;
-    conn->cgi_out_wrapper = NULL;
-}
-
-/*
- * Forks the CGI child (CgiHandler::execute sets conn->cgi_in_fd / cgi_out_fd /
- * cgi_pid and moves the connection into CGI_WRITING_BODY), then rewires epoll:
- * the client socket is parked (kept only for EPOLLRDHUP so we notice a hangup)
- * and the CGI stdin pipe is registered for EPOLLOUT so onCgiPipeOUT can stream
- * the request body. On any failure the CGI state is torn down and a 500 is sent.
- */
-void Server::_startCgi(Connection* conn) {
-    if (!CgiHandler::execute(conn, conn->cgi_job)) {
-        Logger::log(Logger::ERROR, "CGI execute failed");
-        _sendError(conn, 500);
-        return;
-    }
-
-    conn->cgi_sent_idx = 0;
-    conn->last_activity = std::time(NULL);  // baseline for the CGI inactivity timer
-
-    try {
-        // Park the client socket: no more EPOLLIN/EPOLLOUT until the CGI reply
-        // is ready, but keep EPOLLRDHUP so a client disconnect is detected.
-        _epoll.modifyFd(conn->getFd(), EPOLLRDHUP, conn);
-
-        // Register both pipes up front. Watching stdout from the start avoids a
-        // deadlock where the child blocks writing a large response while we are
-        // still feeding its stdin.
-        conn->cgi_in_wrapper = new CgiPipeWrapper(conn, false);
-        _epoll.addFd(conn->cgi_in_fd, EPOLLOUT, conn->cgi_in_wrapper);
-
-        conn->cgi_out_wrapper = new CgiPipeWrapper(conn, true);
-        _epoll.addFd(conn->cgi_out_fd, EPOLLIN, conn->cgi_out_wrapper);
-    } catch (const std::exception& e) {
-        Logger::log(Logger::ERROR, std::string("CGI epoll setup failed: ") + e.what());
-        _teardownCgi(conn);
-        _sendError(conn, 500);
-        return;
-    }
-
-    Logger::log(Logger::INFO, "CGI started pid=" + to_string(conn->cgi_pid) +
-                              " (" + conn->cgi_job.interpreter + " " +
-                              conn->cgi_job.script_path + ")");
-}
-
-/*
- * Closes the CGI stdin pipe (write end) and frees its wrapper, so the child
- * sees EOF on stdin. Removes it from epoll first. Safe to call repeatedly.
- */
-void Server::_closeCgiInPipe(Connection* conn) {
-    if (conn->cgi_in_fd != -1) {
-        try { _epoll.removeFd(conn->cgi_in_fd); }
-        catch (const std::exception& e) {
-            Logger::log(Logger::WARNING, std::string("CGI in-pipe epoll remove: ") + e.what());
-        }
-        close(conn->cgi_in_fd);
-        conn->cgi_in_fd = -1;
-    }
-    delete conn->cgi_in_wrapper;
-    conn->cgi_in_wrapper = NULL;
 }
 
 /*
@@ -716,137 +627,10 @@ void Server::_sendError(Connection* conn, int status) {
 }
 
 /*
- * CGI stdout pipe is readable: read once into conn->cgi_raw_output. epoll is
- * level-triggered, so if more data remains EPOLLIN fires again on the next loop
- * iteration. EOF (read == 0) means the child finished writing its response, so we
- * finalize. A negative return is a read error and finalizes as 502 (errno must
- * not be inspected after a read).
+ * CGI stdout pipe is readable (IServerCallback): delegate to the CGI subsystem.
  */
 void Server::onCgiPipeIN(Connection* conn) {
-    char buf[65536];
-
-    ssize_t n = read(conn->cgi_out_fd, buf, sizeof(buf));
-    if (n > 0) {
-        conn->cgi_raw_output.insert(conn->cgi_raw_output.end(), buf, buf + n);
-        conn->last_activity = std::time(NULL);  // progress: reset inactivity timer
-        return;
-    }
-    if (n == 0) {                       // EOF: response complete
-        _finalizeCgi(conn, false);
-        return;
-    }
-    _finalizeCgi(conn, true);           // read error -> 502
-}
-
-/*
- * Reaps the CGI child, tears down its pipes, and turns the collected output into
- * the client response. Empty output, a read error, or output without a valid
- * header block becomes 502 Bad Gateway.
- */
-void Server::_finalizeCgi(Connection* conn, bool readError) {
-    // Reap the child without blocking the event loop. If it closed stdout but
-    // hasn't exited, don't wait on it — kill it and reap (SIGKILL reaps fast).
-    if (conn->cgi_pid > 0) {
-        int status = 0;
-        if (waitpid(conn->cgi_pid, &status, WNOHANG) == 0) {
-            kill(conn->cgi_pid, SIGKILL);
-            waitpid(conn->cgi_pid, &status, 0);
-        }
-        conn->cgi_pid = -1;
-    }
-
-    // Release the pipes/wrappers (cgi_pid already reaped above).
-    _teardownCgi(conn);
-
-    std::string response;
-    if (!readError)
-        response = _buildCgiResponse(conn);  // empty string if output is malformed
-
-    if (response.empty()) {
-        Logger::log(Logger::WARNING, "CGI produced no valid response -> 502");
-        _sendError(conn, 502);
-        return;
-    }
-
-    _queueResponse(conn, response);
-    Logger::log(Logger::DEBUG, "CGI response ready (" + to_string(response.size()) + " bytes)");
-}
-
-/*
- * Translates raw CGI output into a complete HTTP/1.1 response.
- *
- * CGI scripts emit a header block (terminated by a blank line) followed by the
- * body. We honor a "Status:" header for the status line, pass the remaining
- * headers through (dropping hop-by-hop / length headers we control), and append
- * a computed Content-Length plus the Connection header per conn->keep_alive.
- * Returns "" if there is no header/body separator so the caller can emit 502.
- */
-std::string Server::_buildCgiResponse(Connection* conn) const {
-    std::string raw(conn->cgi_raw_output.begin(), conn->cgi_raw_output.end());
-
-    // Locate the header/body separator: prefer CRLFCRLF, accept bare LFLF.
-    size_t sep = std::string::npos;
-    size_t sep_len = 0;
-    size_t crlf = raw.find("\r\n\r\n");
-    size_t lf = raw.find("\n\n");
-    if (crlf != std::string::npos && (lf == std::string::npos || crlf <= lf)) {
-        sep = crlf;
-        sep_len = 4;
-    } else if (lf != std::string::npos) {
-        sep = lf;
-        sep_len = 2;
-    } else {
-        return "";  // no header block: malformed CGI output
-    }
-
-    std::string header_block = raw.substr(0, sep);
-    std::string body = raw.substr(sep + sep_len);
-
-    std::string status_line = "HTTP/1.1 200 OK";
-    std::string passthrough;
-
-    // Walk the header lines (split on LF, tolerate trailing CR).
-    size_t pos = 0;
-    while (pos < header_block.size()) {
-        size_t eol = header_block.find('\n', pos);
-        std::string line = (eol == std::string::npos)
-                               ? header_block.substr(pos)
-                               : header_block.substr(pos, eol - pos);
-        pos = (eol == std::string::npos) ? header_block.size() : eol + 1;
-        if (!line.empty() && line[line.size() - 1] == '\r')
-            line.erase(line.size() - 1);
-        if (line.empty())
-            continue;
-
-        size_t colon = line.find(':');
-        if (colon == std::string::npos)
-            continue;
-        std::string key = line.substr(0, colon);
-        std::string lkey = to_lower_ascii(key);
-
-        if (lkey == "status") {
-            // "Status: 302 Found" -> "HTTP/1.1 302 Found"
-            std::string val = line.substr(colon + 1);
-            size_t s = val.find_first_not_of(" \t");
-            if (s != std::string::npos)
-                status_line = "HTTP/1.1 " + val.substr(s);
-            continue;
-        }
-        // We set these ourselves; drop any the script provided.
-        if (lkey == "content-length" || lkey == "connection" ||
-            lkey == "transfer-encoding")
-            continue;
-
-        passthrough += line;
-        passthrough += "\r\n";
-    }
-
-    std::string out = status_line + "\r\n";
-    out += passthrough;
-    out += "Content-Length: " + to_string(body.size()) + "\r\n";
-    out += conn->keep_alive ? "Connection: keep-alive\r\n\r\n" : "Connection: close\r\n\r\n";
-    out += body;
-    return out;
+    _cgi.onPipeIN(conn);
 }
 
 /*
@@ -885,8 +669,8 @@ size_t Server::_maxBodyLimitForPort(int port) const {
 
 /*
  * Throttled (~1Hz) sweep over all connections. A CGI exchange is aborted with
- * 504 when it has either made no I/O progress for CGI_INACTIVITY seconds or run
- * longer than the absolute CGI_HARD cap. An ordinary client is closed when a
+ * 504 when the CGI subsystem reports it timed out (no I/O progress or past the
+ * hard cap — see CgiManager::isExpired). An ordinary client is closed when a
  * request it is sending exceeds REQUEST_TIMEOUT measured from its first byte (a
  * slow-drip / slowloris client cannot defer this by trickling bytes, since the
  * deadline is anchored to first_byte_time, not the per-recv last_activity), or
@@ -899,12 +683,10 @@ void Server::_checkTimeouts() {
         return;
     _last_timeout_check = now;
 
-    const std::time_t CGI_INACTIVITY  = 5;   // no stdin/stdout progress
-    const std::time_t CGI_HARD        = 60;  // absolute wall-clock cap
     const std::time_t REQUEST_TIMEOUT = 60;  // absolute cap on receiving one request
     const std::time_t CLIENT_TIMEOUT  = 30;  // idle client with no request in flight
 
-    // Collect first, then act. _timeoutCgi only rewires epoll (keeps the
+    // Collect first, then act. _cgi.timeout only rewires epoll (keeps the
     // connection alive to send 504), while idle clients are closed outright via
     // onCloseConnection (which deletes the Connection and erases the map entry),
     // so we must not mutate the map while iterating it.
@@ -913,13 +695,8 @@ void Server::_checkTimeouts() {
     for (std::map<int, Connection*>::iterator it = _connections.begin();
          it != _connections.end(); ++it) {
         Connection* conn = it->second;
-        bool is_cgi = (conn->state == Connection::CGI_WRITING_BODY ||
-                       conn->state == Connection::CGI_READING_OUTPUT);
-        if (is_cgi) {
-            if (conn->cgi_pid <= 0)
-                continue;
-            if ((now - conn->cgi_start_time) >= CGI_HARD ||
-                (now - conn->last_activity)  >= CGI_INACTIVITY)
+        if (_cgi.isActive(conn)) {
+            if (_cgi.isExpired(conn, now))
                 expired.push_back(conn);
         } else if (conn->first_byte_time != 0) {
             // A request is mid-arrival. Enforce an ABSOLUTE deadline from its first
@@ -937,7 +714,7 @@ void Server::_checkTimeouts() {
     }
 
     for (size_t i = 0; i < expired.size(); ++i)
-        _timeoutCgi(expired[i]);
+        _cgi.timeout(expired[i]);
     for (size_t i = 0; i < idle.size(); ++i) {
         Logger::log(Logger::INFO, "Closing idle client fd=" +
                     to_string(idle[i]->getFd()));
@@ -946,49 +723,8 @@ void Server::_checkTimeouts() {
 }
 
 /*
- * Aborts a timed-out CGI: kills + reaps the child and frees its pipes (via
- * _teardownCgi), then queues 504 Gateway Timeout on the client socket.
- */
-void Server::_timeoutCgi(Connection* conn) {
-    int client_fd = conn->getFd();
-    Logger::log(Logger::WARNING, "CGI timeout (pid=" + to_string(conn->cgi_pid) +
-                                 ") on fd=" + to_string(client_fd) + " -> 504");
-    _teardownCgi(conn);
-    _sendError(conn, 504);
-}
-
-/*
- * CGI stdin pipe is writable: stream the request body to the child.
- * Writes as much as the pipe accepts; resumes on the next EPOLLOUT (EAGAIN).
- * When the whole body is written — or the child closed its stdin (EPIPE) — the
- * stdin pipe is closed so the CGI sees EOF, and the connection moves to
- * CGI_READING_OUTPUT. The stdout pipe is already registered (see _startCgi), so
- * onCgiPipeIN collects the reply independently.
+ * CGI stdin pipe is writable (IServerCallback): delegate to the CGI subsystem.
  */
 void Server::onCgiPipeOUT(Connection* conn) {
-    const std::vector<char>& body = conn->cgi_job.body;
-
-    if (conn->cgi_sent_idx < body.size()) {
-        size_t remaining = body.size() - conn->cgi_sent_idx;
-        ssize_t n = write(conn->cgi_in_fd, &body[conn->cgi_sent_idx], remaining);
-        if (n < 0) {
-            // Written only in response to EPOLLOUT. errno must not be inspected
-            // after a write, so treat any negative return as the child having
-            // closed/exited (EPIPE): stop feeding stdin and move to reading its
-            // output. The stdin pipe is closed so the child sees EOF.
-            _closeCgiInPipe(conn);
-            conn->setState(Connection::CGI_READING_OUTPUT);
-            return;
-        }
-        conn->cgi_sent_idx += static_cast<size_t>(n);
-        conn->last_activity = std::time(NULL);  // progress: reset inactivity timer
-    }
-
-    if (conn->cgi_sent_idx >= body.size()) {
-        Logger::log(Logger::DEBUG, "CGI request body fully written (" +
-                                   to_string(body.size()) + " bytes)");
-        _closeCgiInPipe(conn);
-        conn->setState(Connection::CGI_READING_OUTPUT);
-    }
+    _cgi.onPipeOUT(conn);
 }
-

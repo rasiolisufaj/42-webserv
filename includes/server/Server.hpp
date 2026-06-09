@@ -11,11 +11,16 @@
 #include "server/Socket.hpp"
 #include "http/Request.hpp"
 #include "http/RequestContext.hpp"
+#include "server/CgiManager.hpp"
 
 class Connection;
 struct RouteMatch;
 
 class Server : public IServerCallback {
+    // CgiManager drives the CGI exchange on top of the same epoll loop and reuses
+    // the single-owner _queueResponse / _sendError transitions below.
+    friend class CgiManager;
+
     private:
         // Stores all parsed server configurations (from config file)
         const std::vector<ServerConfig>& _configs;
@@ -25,6 +30,7 @@ class Server : public IServerCallback {
         std::map<int, Connection*>       _connections;
         bool                             _running;
         std::time_t                      _last_timeout_check;  // throttles the sweep to ~1Hz
+        CgiManager                       _cgi;  // owns the CGI lifecycle (declared after _epoll)
 
         // Result of inspecting a partially-read client buffer (see _requestReadiness).
         enum RequestReadiness {
@@ -107,58 +113,12 @@ class Server : public IServerCallback {
         size_t _maxBodyLimitForPort(int port) const;
 
         /*
-         * Aborts an in-flight CGI exchange due to timeout: kills/reaps the child,
-         * tears down the pipes, and queues a 504 Gateway Timeout to the client.
-         */
-        void _timeoutCgi(Connection* conn);
-
-        /*
          * Queues an error response and arms EPOLLOUT. Routes through
          * make_error_response(conn->server_cfg) so a pre-routing failure (parse /
          * routing) still serves the matching custom error_page (or a generated
          * page) with a body, and always sets Connection: close.
          */
         void _sendError(Connection* conn, int status);
-
-        /*
-         * Tears down any CGI state attached to a connection: removes the CGI
-         * pipe fds from epoll, closes them, kills and reaps the child, and frees
-         * the pipe wrappers. Safe to call when no CGI is active (no-op). Must run
-         * before the Connection is destroyed so epoll never references a freed
-         * wrapper pointer.
-         */
-        void _teardownCgi(Connection* conn);
-
-        /*
-         * Launches CGI for an already-built conn->cgi_job: forks the child,
-         * detaches the client socket from read events, and registers the CGI
-         * stdin pipe so the request body can be streamed. On failure, sends 500.
-         */
-        void _startCgi(Connection* conn);
-
-        /*
-         * Removes the CGI stdin pipe from epoll, closes it, and frees its
-         * wrapper. Called once the request body has been fully written (or on a
-         * write error) so the child sees EOF on stdin. Idempotent.
-         */
-        void _closeCgiInPipe(Connection* conn);
-
-        /*
-         * Finishes a CGI exchange: reaps the child, tears down the pipes, then
-         * either turns the collected CGI output into an HTTP response (arming the
-         * client socket for EPOLLOUT) or, on read error / empty / malformed
-         * output, sends 502 Bad Gateway.
-         */
-        void _finalizeCgi(Connection* conn, bool readError);
-
-        /*
-         * Parses the raw CGI output (conn->cgi_raw_output) into a full HTTP
-         * response: maps a CGI "Status:" header to the status line, passes the
-         * remaining CGI headers through, and appends a computed Content-Length +
-         * the Connection header per conn->keep_alive. Returns an empty string if
-         * the output has no valid header/body separator (caller treats that as 502).
-         */
-        std::string _buildCgiResponse(Connection* conn) const;
 
         /*
          * Builds the HTTP response for a routed (non-CGI) request: flattens the
@@ -226,14 +186,12 @@ class Server : public IServerCallback {
         virtual void onCloseConnection(int fd, Connection* conn);
 
         /*
-         * Called when a CGI process stdout pipe is readable.
-         * (Not implemented in Phase 5; stub for now)
+         * Called when a CGI process stdout pipe is readable. Delegates to _cgi.
          */
         virtual void onCgiPipeIN(Connection* conn);
 
         /*
-         * Called when a CGI process stdin pipe is writable.
-         * (Not implemented in Phase 5; stub for now)
+         * Called when a CGI process stdin pipe is writable. Delegates to _cgi.
          */
         virtual void onCgiPipeOUT(Connection* conn);
 };

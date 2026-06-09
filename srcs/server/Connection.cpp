@@ -30,7 +30,7 @@ Connection::~Connection()
     }
     // CGI cleanup: close parent pipe ends, reap the child, free epoll wrappers.
     // The Server is responsible for removing these fds from epoll before the
-    // Connection is destroyed (see Server::_teardownCgi); here we guarantee the
+    // Connection is destroyed (see CgiManager::teardown); here we guarantee the
     // OS resources are released even if that path was missed.
     if (this->cgi_in_fd != -1)
     {
