@@ -181,7 +181,82 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
 
     _connections[client_fd] = conn;
     Logger::log(Logger::INFO, "New connection accepted (fd=" + to_string(client_fd) + ")");
-    Logger::log(Logger::INFO, "New connection accepted (fd=" + to_string(client_fd) + ")");
+}
+
+/*
+ * Decides whether a complete request is buffered, without mutating state.
+ *
+ * A request is complete once the "\r\n\r\n" header terminator is present AND the
+ * body has fully arrived: for Transfer-Encoding, the "0\r\n\r\n" chunk terminator;
+ * otherwise Content-Length bytes after the header block. The headers are parsed
+ * through Headers (case-insensitive, reusing validated logic) only to read those
+ * two fields. Errors map to a status for the caller to send: a malformed header
+ * block or bad Content-Length via status_from_exception, or an early 413 when the
+ * declared length already exceeds every route's limit on this port (so we reject
+ * before buffering the body; the exact per-route limit is still enforced later in
+ * ResponseBuilder for bodies within this maximum).
+ */
+Server::RequestReadiness Server::_requestReadiness(const std::string& buffer,
+                                                   int port, int& errorStatus) const {
+    size_t header_end = buffer.find("\r\n\r\n");
+    if (header_end == std::string::npos)
+        return REQ_INCOMPLETE;
+
+    size_t body_start = header_end + 4;
+    size_t body_received = buffer.size() - body_start;
+
+    Headers headers;
+    try {
+        std::string head = buffer.substr(0, header_end);
+        size_t rl_end = head.find("\r\n");
+        std::string headers_only = (rl_end != std::string::npos) ? head.substr(rl_end + 2) : "";
+        size_t pos = 0;
+        while (pos < headers_only.size()) {
+            size_t eol = headers_only.find("\r\n", pos);
+            std::string line = (eol == std::string::npos)
+                ? headers_only.substr(pos)
+                : headers_only.substr(pos, eol - pos);
+            pos = (eol == std::string::npos) ? headers_only.size() : eol + 2;
+            if (!line.empty())
+                headers.parseLine(line);
+        }
+    } catch (const std::exception& e) {
+        Logger::log(Logger::WARNING, std::string("Header parse error: ") + e.what());
+        errorStatus = status_from_exception(e.what());
+        return REQ_ERROR;
+    }
+
+    if (headers.hasHeader("transfer-encoding")) {
+        // Look for the chunked terminal "0\r\n\r\n" starting from the body section.
+        if (buffer.find("0\r\n\r\n", body_start) == std::string::npos)
+            return REQ_INCOMPLETE;
+        return REQ_COMPLETE;
+    }
+
+    size_t content_length = 0;
+    try {
+        content_length = headers.getContentLength();
+    } catch (const std::exception& e) {
+        Logger::log(Logger::WARNING, std::string("Content-Length error: ") + e.what());
+        errorStatus = status_from_exception(e.what());
+        return REQ_ERROR;
+    }
+
+    size_t limit = _maxBodyLimitForPort(port);
+    if (limit != (size_t)-1 && content_length > limit) {
+        Logger::log(Logger::WARNING, "Content-Length " + to_string(content_length) +
+                    " exceeds max body size " + to_string(limit) + " -> 413");
+        errorStatus = 413;
+        return REQ_ERROR;
+    }
+
+    if (body_received < content_length) {
+        Logger::log(Logger::DEBUG, "Body incomplete: received " + to_string(body_received) +
+                    " bytes, expecting " + to_string(content_length));
+        return REQ_INCOMPLETE;
+    }
+
+    return REQ_COMPLETE;
 }
 
 /*
@@ -214,78 +289,33 @@ void Server::onClientIN(Connection* conn) {
 
     conn->in_buffer.insert(conn->in_buffer.end(), buf, buf + n);
     conn->last_activity = std::time(NULL);  // progress: reset the idle timer
+    // Stamp the start of this request the first time any byte arrives. Unlike
+    // last_activity (reset on every recv), this is NOT reset by later bytes, so it
+    // anchors an absolute receive deadline that a slow-drip client cannot defer.
+    if (conn->first_byte_time == 0)
+        conn->first_byte_time = conn->last_activity;
     Logger::log(Logger::DEBUG, "Read " + to_string(n) + " bytes, in_buffer now " +
                 to_string(conn->in_buffer.size()) + " bytes");
 
     std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.end());
-    size_t header_end = buffer_str.find("\r\n\r\n");
-    if (header_end == std::string::npos) {
+
+    // Decide whether a full request has arrived before doing any real parsing.
+    int errorStatus = 0;
+    RequestReadiness ready =
+        _requestReadiness(buffer_str, conn->server_cfg->port, errorStatus);
+    if (ready == REQ_INCOMPLETE) {
         Logger::log(Logger::DEBUG, "Incomplete request, waiting for more data");
-        return;
+        return;  // keep first_byte_time set: the absolute receive deadline is ticking
     }
-
-    size_t body_start = header_end + 4;
-    size_t body_received = buffer_str.size() - body_start;
-
-    // Use Headers to check body completeness: case-insensitive, reuses validated logic.
-    Headers temp_headers;
-    try {
-        std::string head = buffer_str.substr(0, header_end);
-        size_t rl_end = head.find("\r\n");
-        std::string headers_only = (rl_end != std::string::npos) ? head.substr(rl_end + 2) : "";
-        size_t pos = 0;
-        while (pos < headers_only.size()) {
-            size_t eol = headers_only.find("\r\n", pos);
-            std::string line = (eol == std::string::npos)
-                ? headers_only.substr(pos)
-                : headers_only.substr(pos, eol - pos);
-            pos = (eol == std::string::npos) ? headers_only.size() : eol + 2;
-            if (!line.empty())
-                temp_headers.parseLine(line);
-        }
-    } catch (const std::exception& e) {
-        Logger::log(Logger::WARNING, std::string("Header parse error: ") + e.what());
+    if (ready == REQ_ERROR) {
+        conn->first_byte_time = 0;  // done receiving; switch to the idle/send timer
         conn->in_buffer.clear();
-        _sendError(conn, fd, status_from_exception(e.what()));
+        _sendError(conn, fd, errorStatus);
         return;
     }
 
-    if (temp_headers.hasHeader("transfer-encoding")) {
-        // Look for chunked terminal "0\r\n\r\n" starting from the body section.
-        if (buffer_str.find("0\r\n\r\n", body_start) == std::string::npos) {
-            Logger::log(Logger::DEBUG, "Chunked body incomplete, waiting for more data");
-            return;
-        }
-    } else {
-        size_t content_length = 0;
-        try {
-            content_length = temp_headers.getContentLength();
-        } catch (const std::exception& e) {
-            Logger::log(Logger::WARNING, std::string("Content-Length error: ") + e.what());
-            conn->in_buffer.clear();
-            _sendError(conn, fd, status_from_exception(e.what()));
-            return;
-        }
-        // Reject an over-large body before buffering it: if Content-Length
-        // exceeds the largest client_max_body_size of any route on this port, no
-        // route could accept it, so answer 413 now instead of reading the whole
-        // body into memory (the precise per-route limit is still enforced later
-        // in ResponseBuilder for bodies within this maximum).
-        size_t limit = _maxBodyLimitForPort(conn->server_cfg->port);
-        if (limit != (size_t)-1 && content_length > limit) {
-            Logger::log(Logger::WARNING, "Content-Length " + to_string(content_length) +
-                        " exceeds max body size " + to_string(limit) + " -> 413");
-            conn->in_buffer.clear();
-            _sendError(conn, fd, 413);
-            return;
-        }
-
-        if (body_received < content_length) {
-            Logger::log(Logger::DEBUG, "Body incomplete: received " + to_string(body_received) +
-                        " bytes, expecting " + to_string(content_length));
-            return;
-        }
-    }
+    // Full request received — the absolute receive deadline no longer applies.
+    conn->first_byte_time = 0;
 
     // Full request buffered — parse it.
     Request req;
@@ -341,11 +371,7 @@ void Server::onClientIN(Connection* conn) {
         }
     }
 
-    std::string response = _buildResponse(ctx, routeMatch);
-    conn->out_buffer.assign(response.begin(), response.end());
-    conn->write_idx = 0;
-    conn->setState(Connection::SENDING_RESPONSE);
-    _epoll.modifyFd(fd, EPOLLOUT | EPOLLRDHUP, conn);
+    _queueResponse(conn, _buildResponse(ctx, routeMatch));
 }
 
 /*
@@ -555,14 +581,24 @@ std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& 
  * block — the best error_page source available before routing completes.
  * onClientOUT will drain and then set state=CLOSED; Connection::handle() closes.
  */
-void Server::_sendError(Connection* conn, int fd, int status) {
-    Response resp = make_error_response(status, conn->server_cfg);
-    resp.setHeader("Connection", "close");
-    std::string response = resp.toString();
+/*
+ * Hands a finished response back to the event loop: buffer it, reset the write
+ * cursor, switch to SENDING_RESPONSE, and arm EPOLLOUT (+ EPOLLRDHUP) so
+ * onClientOUT drains it and then closes. Single owner of this state transition,
+ * shared by the static, CGI, and error paths.
+ */
+void Server::_queueResponse(Connection* conn, const std::string& response) {
     conn->out_buffer.assign(response.begin(), response.end());
     conn->write_idx = 0;
     conn->setState(Connection::SENDING_RESPONSE);
-    _epoll.modifyFd(fd, EPOLLOUT | EPOLLRDHUP, conn);
+    _epoll.modifyFd(conn->getFd(), EPOLLOUT | EPOLLRDHUP, conn);
+}
+
+void Server::_sendError(Connection* conn, int fd, int status) {
+    (void)fd;  // always conn->getFd(); _queueResponse arms the right socket
+    Response resp = make_error_response(status, conn->server_cfg);
+    resp.setHeader("Connection", "close");
+    _queueResponse(conn, resp.toString());
 }
 
 /*
@@ -620,10 +656,7 @@ void Server::_finalizeCgi(Connection* conn, bool readError) {
         return;
     }
 
-    conn->out_buffer.assign(response.begin(), response.end());
-    conn->write_idx = 0;
-    conn->setState(Connection::SENDING_RESPONSE);
-    _epoll.modifyFd(client_fd, EPOLLOUT | EPOLLRDHUP, conn);
+    _queueResponse(conn, response);
     Logger::log(Logger::DEBUG, "CGI response ready (" + to_string(response.size()) + " bytes)");
 }
 
@@ -741,8 +774,12 @@ size_t Server::_maxBodyLimitForPort(int port) const {
 /*
  * Throttled (~1Hz) sweep over all connections. A CGI exchange is aborted with
  * 504 when it has either made no I/O progress for CGI_INACTIVITY seconds or run
- * longer than the absolute CGI_HARD cap. Guarantees the "never hang" rule even
- * for a child that loops forever or stalls.
+ * longer than the absolute CGI_HARD cap. An ordinary client is closed when a
+ * request it is sending exceeds REQUEST_TIMEOUT measured from its first byte (a
+ * slow-drip / slowloris client cannot defer this by trickling bytes, since the
+ * deadline is anchored to first_byte_time, not the per-recv last_activity), or
+ * when it sits idle (no request in progress) for CLIENT_TIMEOUT. Guarantees the
+ * "never hang indefinitely" rule for both runaway CGI and stalled clients.
  */
 void Server::_checkTimeouts() {
     std::time_t now = std::time(NULL);
@@ -750,9 +787,10 @@ void Server::_checkTimeouts() {
         return;
     _last_timeout_check = now;
 
-    const std::time_t CGI_INACTIVITY = 5;   // no stdin/stdout progress
-    const std::time_t CGI_HARD       = 60;  // absolute wall-clock cap
-    const std::time_t CLIENT_TIMEOUT = 30;  // idle ordinary client (slowloris guard)
+    const std::time_t CGI_INACTIVITY  = 5;   // no stdin/stdout progress
+    const std::time_t CGI_HARD        = 60;  // absolute wall-clock cap
+    const std::time_t REQUEST_TIMEOUT = 60;  // absolute cap on receiving one request
+    const std::time_t CLIENT_TIMEOUT  = 30;  // idle client with no request in flight
 
     // Collect first, then act. _timeoutCgi only rewires epoll (keeps the
     // connection alive to send 504), while idle clients are closed outright via
@@ -771,9 +809,16 @@ void Server::_checkTimeouts() {
             if ((now - conn->cgi_start_time) >= CGI_HARD ||
                 (now - conn->last_activity)  >= CGI_INACTIVITY)
                 expired.push_back(conn);
+        } else if (conn->first_byte_time != 0) {
+            // A request is mid-arrival. Enforce an ABSOLUTE deadline from its first
+            // byte: trickle bytes keep resetting last_activity, so without this a
+            // slowloris client could hold the request open forever (violating the
+            // "never hang" rule). first_byte_time is not reset by later bytes.
+            if ((now - conn->first_byte_time) >= REQUEST_TIMEOUT)
+                idle.push_back(conn);
         } else {
-            // No socket I/O for CLIENT_TIMEOUT seconds: a stalled or slowloris
-            // client. Close it so a request can never hang the connection forever.
+            // No request in flight (freshly accepted but silent, or draining a
+            // response): close if the socket made no progress for CLIENT_TIMEOUT.
             if ((now - conn->last_activity) >= CLIENT_TIMEOUT)
                 idle.push_back(conn);
         }

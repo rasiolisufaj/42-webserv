@@ -26,11 +26,38 @@ class Server : public IServerCallback {
         bool                             _running;
         std::time_t                      _last_timeout_check;  // throttles the sweep to ~1Hz
 
+        // Result of inspecting a partially-read client buffer (see _requestReadiness).
+        enum RequestReadiness {
+            REQ_INCOMPLETE,  // headers/body not fully received yet — wait for more data
+            REQ_COMPLETE,    // a full request is buffered and can be parsed
+            REQ_ERROR        // malformed headers / bad length / too large — send error
+        };
+
         /*
          * Initializes listening sockets for each ServerConfig.
          * Registers each socket with epoll.
          */
         void _initListeners();
+
+        /*
+         * Inspects the bytes buffered so far for one client and decides whether a
+         * complete request has arrived. Does not mutate any state. Returns
+         * REQ_INCOMPLETE while still waiting, REQ_COMPLETE once the full
+         * header block plus body (Content-Length, or the chunked terminator) is
+         * present, or REQ_ERROR — setting `errorStatus` to the HTTP status to send
+         * — on a malformed header block, a bad Content-Length, or a body whose
+         * declared length already exceeds every route's limit on `port` (early 413).
+         */
+        RequestReadiness _requestReadiness(const std::string& buffer, int port,
+                                           int& errorStatus) const;
+
+        /*
+         * Copies `response` into the connection's out buffer, resets the write
+         * cursor, moves it to SENDING_RESPONSE, and arms EPOLLOUT (plus EPOLLRDHUP)
+         * so onClientOUT drains it. The single place that hands a finished response
+         * back to the event loop — used for static, CGI, and error replies alike.
+         */
+        void _queueResponse(Connection* conn, const std::string& response);
 
         /*
          * Periodic (≈1Hz) sweep that enforces timeouts. For CGI exchanges: aborts
