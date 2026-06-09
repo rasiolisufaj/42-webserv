@@ -40,15 +40,26 @@ class Server : public IServerCallback {
         void _initListeners();
 
         /*
+         * Drives one buffered client request: completeness check -> parse -> route
+         * -> CGI/static dispatch (or error). Called by onClientIN after each read,
+         * once the new bytes are appended. Keeping this out of onClientIN separates
+         * the socket-I/O concern (recv + buffering + timestamps) from the HTTP
+         * concern handled here.
+         */
+        void _processRequest(Connection* conn);
+
+        /*
          * Inspects the bytes buffered so far for one client and decides whether a
-         * complete request has arrived. Does not mutate any state. Returns
+         * complete request has arrived. Does not mutate any state. Scans the raw
+         * in_buffer in place (only the header block is ever copied, never the body),
+         * so it stays cheap as a large body streams in over many reads. Returns
          * REQ_INCOMPLETE while still waiting, REQ_COMPLETE once the full
          * header block plus body (Content-Length, or the chunked terminator) is
          * present, or REQ_ERROR — setting `errorStatus` to the HTTP status to send
          * — on a malformed header block, a bad Content-Length, or a body whose
          * declared length already exceeds every route's limit on `port` (early 413).
          */
-        RequestReadiness _requestReadiness(const std::string& buffer, int port,
+        RequestReadiness _requestReadiness(const std::vector<char>& buffer, int port,
                                            int& errorStatus) const;
 
         /*
@@ -62,7 +73,7 @@ class Server : public IServerCallback {
          * against the running decoded length for an early 413. Sets `errorStatus`
          * (400 / 413) and returns REQ_ERROR on malformed framing or over-limit.
          */
-        RequestReadiness _chunkedReadiness(const std::string& buffer, size_t body_start,
+        RequestReadiness _chunkedReadiness(const std::vector<char>& buffer, size_t body_start,
                                            size_t limit, int& errorStatus) const;
 
         /*

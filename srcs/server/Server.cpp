@@ -19,6 +19,24 @@
 #include <cstring>
 #include <ctime>
 #include <set>
+#include <algorithm>
+
+/*
+ * Finds the first occurrence of the byte sequence [seq, seq+seqlen) in `buf`
+ * starting at index `from`, returning its index or std::string::npos. Lets the
+ * readiness checks scan conn->in_buffer (a std::vector<char>) for CRLF markers
+ * without first copying it into a std::string.
+ */
+static size_t findSeq(const std::vector<char>& buf, size_t from,
+                      const char* seq, size_t seqlen) {
+    if (from > buf.size())
+        return std::string::npos;
+    std::vector<char>::const_iterator it =
+        std::search(buf.begin() + from, buf.end(), seq, seq + seqlen);
+    if (it == buf.end())
+        return std::string::npos;
+    return static_cast<size_t>(it - buf.begin());
+}
 
 /*
  * Constructor: stores reference to configs, initializes members.
@@ -193,7 +211,7 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
  * "0\r\n\r\n", this is not fooled by that byte sequence appearing inside chunk
  * data, and it correctly skips chunk extensions (";...") and trailer headers.
  */
-Server::RequestReadiness Server::_chunkedReadiness(const std::string& buffer,
+Server::RequestReadiness Server::_chunkedReadiness(const std::vector<char>& buffer,
                                                    size_t body_start, size_t limit,
                                                    int& errorStatus) const {
     size_t pos = body_start;
@@ -201,11 +219,11 @@ Server::RequestReadiness Server::_chunkedReadiness(const std::string& buffer,
 
     while (true) {
         // chunk-size line: hex digits, optionally followed by a ";chunk-extension".
-        size_t crlf = buffer.find("\r\n", pos);
+        size_t crlf = findSeq(buffer, pos, "\r\n", 2);
         if (crlf == std::string::npos)
             return REQ_INCOMPLETE;              // size line not fully arrived yet
 
-        std::string size_line = buffer.substr(pos, crlf - pos);
+        std::string size_line(buffer.begin() + pos, buffer.begin() + crlf);
         size_t semi = size_line.find(';');
         std::string hex = (semi == std::string::npos) ? size_line : size_line.substr(0, semi);
         if (hex.empty()) { errorStatus = 400; return REQ_ERROR; }
@@ -226,7 +244,7 @@ Server::RequestReadiness Server::_chunkedReadiness(const std::string& buffer,
         if (chunk_size == 0) {
             size_t tpos = data_start;
             while (true) {
-                size_t tcrlf = buffer.find("\r\n", tpos);
+                size_t tcrlf = findSeq(buffer, tpos, "\r\n", 2);
                 if (tcrlf == std::string::npos)
                     return REQ_INCOMPLETE;        // trailers / final CRLF not all here
                 if (tcrlf == tpos)
@@ -267,9 +285,9 @@ Server::RequestReadiness Server::_chunkedReadiness(const std::string& buffer,
  * before buffering the body; the exact per-route limit is still enforced later in
  * ResponseBuilder for bodies within this maximum).
  */
-Server::RequestReadiness Server::_requestReadiness(const std::string& buffer,
+Server::RequestReadiness Server::_requestReadiness(const std::vector<char>& buffer,
                                                    int port, int& errorStatus) const {
-    size_t header_end = buffer.find("\r\n\r\n");
+    size_t header_end = findSeq(buffer, 0, "\r\n\r\n", 4);
     if (header_end == std::string::npos)
         return REQ_INCOMPLETE;
 
@@ -278,7 +296,9 @@ Server::RequestReadiness Server::_requestReadiness(const std::string& buffer,
 
     Headers headers;
     try {
-        std::string head = buffer.substr(0, header_end);
+        // Copy only the header block (bounded by client_max_header_size), never
+        // the body, so this stays cheap as a large body streams in.
+        std::string head(buffer.begin(), buffer.begin() + header_end);
         size_t rl_end = head.find("\r\n");
         std::string headers_only = (rl_end != std::string::npos) ? head.substr(rl_end + 2) : "";
         size_t pos = 0;
@@ -330,7 +350,10 @@ Server::RequestReadiness Server::_requestReadiness(const std::string& buffer,
 }
 
 /*
- * Called when a client socket is readable.
+ * Called when a client socket is readable. Pure socket I/O: read one chunk, append
+ * it to the connection buffer, refresh the timers, then hand off to _processRequest
+ * which owns all HTTP parsing/routing. (epoll is level-triggered, so any unread
+ * bytes simply trigger another EPOLLIN.)
  */
 void Server::onClientIN(Connection* conn) {
     int fd = conn->getFd();
@@ -362,12 +385,21 @@ void Server::onClientIN(Connection* conn) {
     Logger::log(Logger::DEBUG, "Read " + to_string(n) + " bytes, in_buffer now " +
                 to_string(conn->in_buffer.size()) + " bytes");
 
-    std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.end());
+    _processRequest(conn);
+}
 
+/*
+ * Turns the bytes buffered for one client into a queued response. Runs the
+ * completeness gate (in place over in_buffer, no whole-buffer copy), and only once
+ * a full request is present does it materialize the buffer as a string, parse it,
+ * route it, and dispatch CGI or the static ResponseBuilder. Every failure path
+ * funnels through _sendError. Called from onClientIN after each read.
+ */
+void Server::_processRequest(Connection* conn) {
     // Decide whether a full request has arrived before doing any real parsing.
     int errorStatus = 0;
     RequestReadiness ready =
-        _requestReadiness(buffer_str, conn->server_cfg->port, errorStatus);
+        _requestReadiness(conn->in_buffer, conn->server_cfg->port, errorStatus);
     if (ready == REQ_INCOMPLETE) {
         Logger::log(Logger::DEBUG, "Incomplete request, waiting for more data");
         return;  // keep first_byte_time set: the absolute receive deadline is ticking
@@ -382,7 +414,9 @@ void Server::onClientIN(Connection* conn) {
     // Full request received — the absolute receive deadline no longer applies.
     conn->first_byte_time = 0;
 
-    // Full request buffered — parse it.
+    // Now that a complete request is buffered, materialize it once for the parser.
+    std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.end());
+
     Request req;
     try {
         req.parse(buffer_str);
