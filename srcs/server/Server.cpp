@@ -213,7 +213,8 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
  */
 Server::RequestReadiness Server::_chunkedReadiness(const std::vector<char>& buffer,
                                                    size_t body_start, size_t limit,
-                                                   int& errorStatus) const {
+                                                   int& errorStatus,
+                                                   size_t& consumed) const {
     size_t pos = body_start;
     size_t decoded = 0;
 
@@ -247,8 +248,10 @@ Server::RequestReadiness Server::_chunkedReadiness(const std::vector<char>& buff
                 size_t tcrlf = findSeq(buffer, tpos, "\r\n", 2);
                 if (tcrlf == std::string::npos)
                     return REQ_INCOMPLETE;        // trailers / final CRLF not all here
-                if (tcrlf == tpos)
+                if (tcrlf == tpos) {
+                    consumed = tcrlf + 2;        // past the terminating blank line
                     return REQ_COMPLETE;          // blank line => full body received
+                }
                 tpos = tcrlf + 2;                // a trailer header line: skip it
             }
         }
@@ -286,7 +289,8 @@ Server::RequestReadiness Server::_chunkedReadiness(const std::vector<char>& buff
  * ResponseBuilder for bodies within this maximum).
  */
 Server::RequestReadiness Server::_requestReadiness(const std::vector<char>& buffer,
-                                                   int port, int& errorStatus) const {
+                                                   int port, int& errorStatus,
+                                                   size_t& consumed) const {
     size_t header_end = findSeq(buffer, 0, "\r\n\r\n", 4);
     if (header_end == std::string::npos)
         return REQ_INCOMPLETE;
@@ -320,7 +324,8 @@ Server::RequestReadiness Server::_requestReadiness(const std::vector<char>& buff
     if (headers.hasHeader("transfer-encoding")) {
         // Chunked: walk the chunk framing (robust to data containing the
         // terminator, chunk extensions, and trailers) instead of a byte search.
-        return _chunkedReadiness(buffer, body_start, _maxBodyLimitForPort(port), errorStatus);
+        return _chunkedReadiness(buffer, body_start, _maxBodyLimitForPort(port),
+                                 errorStatus, consumed);
     }
 
     size_t content_length = 0;
@@ -346,6 +351,7 @@ Server::RequestReadiness Server::_requestReadiness(const std::vector<char>& buff
         return REQ_INCOMPLETE;
     }
 
+    consumed = body_start + content_length;
     return REQ_COMPLETE;
 }
 
@@ -398,8 +404,9 @@ void Server::onClientIN(Connection* conn) {
 void Server::_processRequest(Connection* conn) {
     // Decide whether a full request has arrived before doing any real parsing.
     int errorStatus = 0;
+    size_t consumed = 0;
     RequestReadiness ready =
-        _requestReadiness(conn->in_buffer, conn->server_cfg->port, errorStatus);
+        _requestReadiness(conn->in_buffer, conn->server_cfg->port, errorStatus, consumed);
     if (ready == REQ_INCOMPLETE) {
         Logger::log(Logger::DEBUG, "Incomplete request, waiting for more data");
         return;  // keep first_byte_time set: the absolute receive deadline is ticking
@@ -407,15 +414,18 @@ void Server::_processRequest(Connection* conn) {
     if (ready == REQ_ERROR) {
         conn->first_byte_time = 0;  // done receiving; switch to the idle/send timer
         conn->in_buffer.clear();
-        _sendError(conn, errorStatus);
+        _sendError(conn, errorStatus);  // sets keep_alive = false
         return;
     }
 
     // Full request received — the absolute receive deadline no longer applies.
     conn->first_byte_time = 0;
 
-    // Now that a complete request is buffered, materialize it once for the parser.
-    std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.end());
+    // Materialize exactly this request (header block + body) for the parser, then
+    // drop those bytes from the buffer — any trailing bytes are a pipelined next
+    // request and are kept for the following round.
+    std::string buffer_str(conn->in_buffer.begin(), conn->in_buffer.begin() + consumed);
+    conn->in_buffer.erase(conn->in_buffer.begin(), conn->in_buffer.begin() + consumed);
 
     Request req;
     try {
@@ -428,8 +438,15 @@ void Server::_processRequest(Connection* conn) {
         return;
     }
 
-    // Buffer is no longer needed once the Request object is built.
-    conn->in_buffer.clear();
+    // Keep-alive intent: HTTP/1.1 defaults to keep-alive unless "Connection: close";
+    // HTTP/1.0 defaults to close unless "Connection: keep-alive".
+    const Headers& reqHeaders = req.headers();
+    if (req.requestLine().version() == "HTTP/1.0") {
+        conn->keep_alive = reqHeaders.hasHeader("connection") &&
+            to_lower_ascii(reqHeaders.getHeader("connection")) == "keep-alive";
+    } else {
+        conn->keep_alive = !reqHeaders.wantsClose();
+    }
 
     // Build RequestContext using the port this connection arrived on.
     RequestContext ctx;
@@ -470,7 +487,7 @@ void Server::_processRequest(Connection* conn) {
         }
     }
 
-    _queueResponse(conn, _buildResponse(ctx, routeMatch));
+    _queueResponse(conn, _buildResponse(ctx, routeMatch, conn->keep_alive));
 }
 
 /*
@@ -502,7 +519,19 @@ void Server::onClientOUT(Connection* conn) {
 
     if (conn->write_idx >= conn->out_buffer.size()) {
         Logger::log(Logger::DEBUG, "Response fully sent to fd=" + to_string(fd));
-        conn->setState(Connection::CLOSED);
+        if (!conn->keep_alive) {
+            conn->setState(Connection::CLOSED);
+            return;
+        }
+        // Keep-alive: reset for the next request instead of closing.
+        conn->out_buffer.clear();
+        conn->write_idx = 0;
+        conn->setState(Connection::READING_HEADER);
+        _epoll.modifyFd(fd, EPOLLIN | EPOLLRDHUP, conn);
+        // A pipelined request may already sit behind the one we just answered —
+        // handle it now rather than waiting for another EPOLLIN edge.
+        if (!conn->in_buffer.empty())
+            _processRequest(conn);
     }
 }
 
@@ -635,11 +664,13 @@ bool Server::_isMethodAllowed(const RouteMatch& match, const std::string& method
  * RouteMatch into a RouteContext (resolving server/location inheritance), then
  * delegates to ResponseBuilder for the full GET/HEAD/POST/DELETE/return/error
  * decision. If the route context cannot be resolved (e.g. unresolved root /
- * upload_store), we fall back to the shared error builder for a 500 page.
- * Connection: close is forced because keep-alive is not yet implemented
- * (onClientOUT closes the socket once the response is drained).
+ * upload_store), we fall back to the shared error builder for a 500 page. Either
+ * way the Connection header tracks `keepAlive` (both paths are fully framed with a
+ * Content-Length, so the connection can be reused).
  */
-std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& match) const {
+std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& match,
+                                   bool keepAlive) const {
+    const char* connHeader = keepAlive ? "keep-alive" : "close";
     RouteContext route;
     try {
         RouteContextBuilder routeBuilder;
@@ -647,13 +678,13 @@ std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& 
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("RouteContext build error: ") + e.what());
         Response err = make_error_response(500, match.server);
-        err.setHeader("Connection", "close");
+        err.setHeader("Connection", connHeader);
         return err.toString();
     }
 
     ResponseBuilder builder;
     Response resp = builder.build(ctx, route);
-    resp.setHeader("Connection", "close");
+    resp.setHeader("Connection", connHeader);
     return resp.toString();
 }
 
@@ -678,6 +709,7 @@ void Server::_queueResponse(Connection* conn, const std::string& response) {
  * onClientOUT will drain and then set state=CLOSED; Connection::handle() closes.
  */
 void Server::_sendError(Connection* conn, int status) {
+    conn->keep_alive = false;  // errors close: keeps the header and lifecycle in sync
     Response resp = make_error_response(status, conn->server_cfg);
     resp.setHeader("Connection", "close");
     _queueResponse(conn, resp.toString());
@@ -746,8 +778,8 @@ void Server::_finalizeCgi(Connection* conn, bool readError) {
  * CGI scripts emit a header block (terminated by a blank line) followed by the
  * body. We honor a "Status:" header for the status line, pass the remaining
  * headers through (dropping hop-by-hop / length headers we control), and append
- * a computed Content-Length plus "Connection: close". Returns "" if there is no
- * header/body separator so the caller can emit 502.
+ * a computed Content-Length plus the Connection header per conn->keep_alive.
+ * Returns "" if there is no header/body separator so the caller can emit 502.
  */
 std::string Server::_buildCgiResponse(Connection* conn) const {
     std::string raw(conn->cgi_raw_output.begin(), conn->cgi_raw_output.end());
@@ -812,7 +844,7 @@ std::string Server::_buildCgiResponse(Connection* conn) const {
     std::string out = status_line + "\r\n";
     out += passthrough;
     out += "Content-Length: " + to_string(body.size()) + "\r\n";
-    out += "Connection: close\r\n\r\n";
+    out += conn->keep_alive ? "Connection: keep-alive\r\n\r\n" : "Connection: close\r\n\r\n";
     out += body;
     return out;
 }

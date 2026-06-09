@@ -17,7 +17,7 @@
 Connection::Connection(int fd, const ServerConfig *serverCfg)
     : _fd(fd), server_cfg(serverCfg), read_idx(0), write_idx(0),
       state(READING_HEADER), last_activity(std::time(NULL)),
-      first_byte_time(0),
+      first_byte_time(0), keep_alive(false),
       cgi_in_fd(-1), cgi_out_fd(-1), cgi_pid(-1), cgi_start_time(0),
       cgi_sent_idx(0), cgi_in_wrapper(NULL), cgi_out_wrapper(NULL) {}
 
@@ -125,9 +125,12 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
 
     if (event & EPOLLRDHUP)
     {
-        // Peer closed its write side. If there is no pending read/write to
-        // service in this same event, close now; otherwise let the IN/OUT
-        // handler run first (it will close once the response is drained).
+        // Peer closed its write side: it will send no further requests, so do not
+        // keep the connection alive past the current response.
+        this->keep_alive = false;
+        // If there is no pending read/write to service in this same event, close
+        // now; otherwise let the IN/OUT handler run first (it closes once the
+        // response is drained, since keep_alive is now false).
         if (!(event & (EPOLLIN | EPOLLOUT)))
         {
             this->state = CLOSED;

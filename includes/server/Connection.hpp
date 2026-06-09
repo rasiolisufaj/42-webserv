@@ -60,6 +60,11 @@ class Connection : public IEventHandler
         std::time_t last_activity;
         std::time_t first_byte_time;
 
+        // KEEP-ALIVE: whether to keep the connection open after the current
+        // response is fully sent. Set per request from the HTTP version + the
+        // Connection header; forced false on errors and on EPOLLRDHUP.
+        bool keep_alive;
+
         // Cgi Process Management
         int cgi_in_fd;
         int cgi_out_fd;

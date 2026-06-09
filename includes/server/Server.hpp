@@ -58,9 +58,12 @@ class Server : public IServerCallback {
          * present, or REQ_ERROR — setting `errorStatus` to the HTTP status to send
          * — on a malformed header block, a bad Content-Length, or a body whose
          * declared length already exceeds every route's limit on `port` (early 413).
+         * On REQ_COMPLETE, `consumed` is set to the total byte length of the request
+         * (header block + body) so the caller can keep any pipelined bytes that
+         * follow it in the buffer.
          */
         RequestReadiness _requestReadiness(const std::vector<char>& buffer, int port,
-                                           int& errorStatus) const;
+                                           int& errorStatus, size_t& consumed) const;
 
         /*
          * Completeness check for a Transfer-Encoding: chunked body, walking the
@@ -74,7 +77,8 @@ class Server : public IServerCallback {
          * (400 / 413) and returns REQ_ERROR on malformed framing or over-limit.
          */
         RequestReadiness _chunkedReadiness(const std::vector<char>& buffer, size_t body_start,
-                                           size_t limit, int& errorStatus) const;
+                                           size_t limit, int& errorStatus,
+                                           size_t& consumed) const;
 
         /*
          * Copies `response` into the connection's out buffer, resets the write
@@ -151,8 +155,8 @@ class Server : public IServerCallback {
          * Parses the raw CGI output (conn->cgi_raw_output) into a full HTTP
          * response: maps a CGI "Status:" header to the status line, passes the
          * remaining CGI headers through, and appends a computed Content-Length +
-         * Connection: close. Returns an empty string if the output has no valid
-         * header/body separator (caller should treat that as 502).
+         * the Connection header per conn->keep_alive. Returns an empty string if
+         * the output has no valid header/body separator (caller treats that as 502).
          */
         std::string _buildCgiResponse(Connection* conn) const;
 
@@ -161,9 +165,10 @@ class Server : public IServerCallback {
          * RouteMatch into a RouteContext (server/location inheritance) and runs it
          * through ResponseBuilder, returning the serialized response. A failure to
          * resolve the route context (e.g. unresolved root) yields a 500 page.
-         * The response always carries Connection: close (keep-alive not yet wired).
+         * The Connection header is set to keep-alive or close per `keepAlive`.
          */
-        std::string _buildResponse(const RequestContext& ctx, const RouteMatch& match) const;
+        std::string _buildResponse(const RequestContext& ctx, const RouteMatch& match,
+                                   bool keepAlive) const;
 
         /*
          * Whether `method` is in the matched route's accepted methods, using the
