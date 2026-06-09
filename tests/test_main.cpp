@@ -120,8 +120,8 @@ void test_connection_lifecycle()
         assert(conn->state == Connection::READING_HEADER && "Initial state should be READING_HEADER");
         assert(conn->in_buffer.size() == 0 && "Input buffer should be empty");
         assert(conn->out_buffer.size() == 0 && "Output buffer should be empty");
-        assert(conn->upload_fd == -1 && "Upload fd should be uninitialized (-1)");
-        assert(conn->expected_request_total == 0 && "Expected total should be 0");
+        assert(conn->read_idx == 0 && "Read index should be 0");
+        assert(conn->write_idx == 0 && "Write index should be 0");
 
         std::cout << "✓ Connection created successfully\n";
 

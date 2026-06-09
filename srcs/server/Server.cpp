@@ -184,6 +184,77 @@ void Server::onNewConnection(int client_fd, int listener_fd) {
 }
 
 /*
+ * Scans a (possibly partial) chunked body for completeness by walking the chunk
+ * framing, mirroring ChunkDecoder's rules so this check and the later decode
+ * never disagree. Returns REQ_INCOMPLETE while any framing token is only
+ * partially buffered, REQ_ERROR (errorStatus 400/413) on malformed framing or an
+ * over-limit running size, and REQ_COMPLETE once the zero-size last-chunk and its
+ * trailer section (terminated by a blank line) have arrived. Unlike searching for
+ * "0\r\n\r\n", this is not fooled by that byte sequence appearing inside chunk
+ * data, and it correctly skips chunk extensions (";...") and trailer headers.
+ */
+Server::RequestReadiness Server::_chunkedReadiness(const std::string& buffer,
+                                                   size_t body_start, size_t limit,
+                                                   int& errorStatus) const {
+    size_t pos = body_start;
+    size_t decoded = 0;
+
+    while (true) {
+        // chunk-size line: hex digits, optionally followed by a ";chunk-extension".
+        size_t crlf = buffer.find("\r\n", pos);
+        if (crlf == std::string::npos)
+            return REQ_INCOMPLETE;              // size line not fully arrived yet
+
+        std::string size_line = buffer.substr(pos, crlf - pos);
+        size_t semi = size_line.find(';');
+        std::string hex = (semi == std::string::npos) ? size_line : size_line.substr(0, semi);
+        if (hex.empty()) { errorStatus = 400; return REQ_ERROR; }
+
+        size_t chunk_size = 0;
+        for (size_t i = 0; i < hex.size(); ++i) {
+            int d = hex_value(hex[i]);
+            if (d < 0) { errorStatus = 400; return REQ_ERROR; }
+            if (chunk_size > (((size_t)-1) - static_cast<size_t>(d)) / 16) {
+                errorStatus = 400; return REQ_ERROR;   // chunk-size overflow
+            }
+            chunk_size = chunk_size * 16 + static_cast<size_t>(d);
+        }
+
+        size_t data_start = crlf + 2;            // crlf found => data_start <= size()
+
+        // last-chunk: the body ends after the trailer section's terminating blank line.
+        if (chunk_size == 0) {
+            size_t tpos = data_start;
+            while (true) {
+                size_t tcrlf = buffer.find("\r\n", tpos);
+                if (tcrlf == std::string::npos)
+                    return REQ_INCOMPLETE;        // trailers / final CRLF not all here
+                if (tcrlf == tpos)
+                    return REQ_COMPLETE;          // blank line => full body received
+                tpos = tcrlf + 2;                // a trailer header line: skip it
+            }
+        }
+
+        // Early 413: keep the running decoded size within the port's limit.
+        if (limit != (size_t)-1) {
+            if (chunk_size > limit - decoded) { errorStatus = 413; return REQ_ERROR; }
+            decoded += chunk_size;
+        }
+
+        // Need chunk_size data bytes plus the trailing CRLF, all buffered.
+        // Written as subtraction (avail is non-negative) to avoid pointer overflow.
+        size_t avail = buffer.size() - data_start;
+        if (chunk_size > avail || avail - chunk_size < 2)
+            return REQ_INCOMPLETE;
+        if (buffer[data_start + chunk_size] != '\r' ||
+            buffer[data_start + chunk_size + 1] != '\n') {
+            errorStatus = 400; return REQ_ERROR;     // missing/invalid CRLF after chunk-data
+        }
+        pos = data_start + chunk_size + 2;
+    }
+}
+
+/*
  * Decides whether a complete request is buffered, without mutating state.
  *
  * A request is complete once the "\r\n\r\n" header terminator is present AND the
@@ -227,10 +298,9 @@ Server::RequestReadiness Server::_requestReadiness(const std::string& buffer,
     }
 
     if (headers.hasHeader("transfer-encoding")) {
-        // Look for the chunked terminal "0\r\n\r\n" starting from the body section.
-        if (buffer.find("0\r\n\r\n", body_start) == std::string::npos)
-            return REQ_INCOMPLETE;
-        return REQ_COMPLETE;
+        // Chunked: walk the chunk framing (robust to data containing the
+        // terminator, chunk extensions, and trailers) instead of a byte search.
+        return _chunkedReadiness(buffer, body_start, _maxBodyLimitForPort(port), errorStatus);
     }
 
     size_t content_length = 0;
@@ -263,11 +333,6 @@ Server::RequestReadiness Server::_requestReadiness(const std::string& buffer,
  * Called when a client socket is readable.
  */
 void Server::onClientIN(Connection* conn) {
-    if (!conn) {
-        Logger::log(Logger::ERROR, "onClientIN: conn is null");
-        return;
-    }
-
     int fd = conn->getFd();
     Logger::log(Logger::DEBUG, "onClientIN fd=" + to_string(fd));
 
@@ -310,7 +375,7 @@ void Server::onClientIN(Connection* conn) {
     if (ready == REQ_ERROR) {
         conn->first_byte_time = 0;  // done receiving; switch to the idle/send timer
         conn->in_buffer.clear();
-        _sendError(conn, fd, errorStatus);
+        _sendError(conn, errorStatus);
         return;
     }
 
@@ -325,7 +390,7 @@ void Server::onClientIN(Connection* conn) {
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("Request parse error: ") + e.what());
         conn->in_buffer.clear();
-        _sendError(conn, fd, status_from_exception(e.what()));
+        _sendError(conn, status_from_exception(e.what()));
         return;
     }
 
@@ -338,7 +403,7 @@ void Server::onClientIN(Connection* conn) {
         ctx.build(req, conn->server_cfg->port);
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("RequestContext build error: ") + e.what());
-        _sendError(conn, fd, status_from_exception(e.what()));
+        _sendError(conn, status_from_exception(e.what()));
         return;
     }
 
@@ -351,7 +416,7 @@ void Server::onClientIN(Connection* conn) {
         routeMatch = matcher.match(ctx, _configs);
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("Routing error: ") + e.what());
-        _sendError(conn, fd, status_from_exception(e.what()));
+        _sendError(conn, status_from_exception(e.what()));
         return;
     }
 
@@ -366,7 +431,7 @@ void Server::onClientIN(Connection* conn) {
         CgiJob job;
         if (CgiHandler::buildJob(ctx, *routeMatch.server, *routeMatch.location, job)) {
             conn->cgi_job = job;
-            _startCgi(conn, fd);
+            _startCgi(conn);
             return;
         }
     }
@@ -380,11 +445,6 @@ void Server::onClientIN(Connection* conn) {
  * onCloseConnection after this returns.
  */
 void Server::onClientOUT(Connection* conn) {
-    if (!conn) {
-        Logger::log(Logger::ERROR, "onClientOUT: conn is null");
-        return;
-    }
-
     int fd = conn->getFd();
     Logger::log(Logger::DEBUG, "onClientOUT fd=" + to_string(fd));
 
@@ -442,14 +502,7 @@ void Server::onCloseConnection(int fd, Connection* conn) {
  * lets us pull the fds out of epoll while the wrappers are still alive.
  */
 void Server::_teardownCgi(Connection* conn) {
-    if (conn->cgi_in_fd != -1) {
-        try { _epoll.removeFd(conn->cgi_in_fd); }
-        catch (const std::exception& e) {
-            Logger::log(Logger::WARNING, std::string("CGI in-pipe epoll remove: ") + e.what());
-        }
-        close(conn->cgi_in_fd);
-        conn->cgi_in_fd = -1;
-    }
+    _closeCgiInPipe(conn);  // stdin pipe fd + its wrapper (shared with the EOF path)
     if (conn->cgi_out_fd != -1) {
         try { _epoll.removeFd(conn->cgi_out_fd); }
         catch (const std::exception& e) {
@@ -463,8 +516,6 @@ void Server::_teardownCgi(Connection* conn) {
         waitpid(conn->cgi_pid, NULL, 0);
         conn->cgi_pid = -1;
     }
-    delete conn->cgi_in_wrapper;
-    conn->cgi_in_wrapper = NULL;
     delete conn->cgi_out_wrapper;
     conn->cgi_out_wrapper = NULL;
 }
@@ -476,10 +527,10 @@ void Server::_teardownCgi(Connection* conn) {
  * and the CGI stdin pipe is registered for EPOLLOUT so onCgiPipeOUT can stream
  * the request body. On any failure the CGI state is torn down and a 500 is sent.
  */
-void Server::_startCgi(Connection* conn, int client_fd) {
+void Server::_startCgi(Connection* conn) {
     if (!CgiHandler::execute(conn, conn->cgi_job)) {
         Logger::log(Logger::ERROR, "CGI execute failed");
-        _sendError(conn, client_fd, 500);
+        _sendError(conn, 500);
         return;
     }
 
@@ -489,7 +540,7 @@ void Server::_startCgi(Connection* conn, int client_fd) {
     try {
         // Park the client socket: no more EPOLLIN/EPOLLOUT until the CGI reply
         // is ready, but keep EPOLLRDHUP so a client disconnect is detected.
-        _epoll.modifyFd(client_fd, EPOLLRDHUP, conn);
+        _epoll.modifyFd(conn->getFd(), EPOLLRDHUP, conn);
 
         // Register both pipes up front. Watching stdout from the start avoids a
         // deadlock where the child blocks writing a large response while we are
@@ -502,7 +553,7 @@ void Server::_startCgi(Connection* conn, int client_fd) {
     } catch (const std::exception& e) {
         Logger::log(Logger::ERROR, std::string("CGI epoll setup failed: ") + e.what());
         _teardownCgi(conn);
-        _sendError(conn, client_fd, 500);
+        _sendError(conn, 500);
         return;
     }
 
@@ -529,15 +580,6 @@ void Server::_closeCgiInPipe(Connection* conn) {
 }
 
 /*
- * Builds the HTTP response for a routed (non-CGI) request. Flattens the
- * RouteMatch into a RouteContext (resolving server/location inheritance), then
- * delegates to ResponseBuilder for the full GET/HEAD/POST/DELETE/return/error
- * decision. If the route context cannot be resolved (e.g. unresolved root /
- * upload_store), we cannot consult error_page, so we emit a default 500 page.
- * Connection: close is forced because keep-alive is not yet implemented
- * (onClientOUT closes the socket once the response is drained).
- */
-/*
  * Mirrors RouteContextBuilder::resolveMethods: the location's allow_methods if
  * non-empty, otherwise the GET/HEAD default. Used to gate CGI dispatch so a
  * method outside the route's accepted set is rejected (405) just like the static
@@ -554,6 +596,15 @@ bool Server::_isMethodAllowed(const RouteMatch& match, const std::string& method
     return false;
 }
 
+/*
+ * Builds the HTTP response for a routed (non-CGI) request. Flattens the
+ * RouteMatch into a RouteContext (resolving server/location inheritance), then
+ * delegates to ResponseBuilder for the full GET/HEAD/POST/DELETE/return/error
+ * decision. If the route context cannot be resolved (e.g. unresolved root /
+ * upload_store), we fall back to the shared error builder for a 500 page.
+ * Connection: close is forced because keep-alive is not yet implemented
+ * (onClientOUT closes the socket once the response is drained).
+ */
 std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& match) const {
     RouteContext route;
     try {
@@ -561,9 +612,7 @@ std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& 
         route = routeBuilder.build(match);
     } catch (const std::exception& e) {
         Logger::log(Logger::WARNING, std::string("RouteContext build error: ") + e.what());
-        Response err(500, reason_phrase(500));
-        err.setHeader("Content-Type", "text/html");
-        err.setBody(default_error_body(500));
+        Response err = make_error_response(500, match.server);
         err.setHeader("Connection", "close");
         return err.toString();
     }
@@ -574,13 +623,6 @@ std::string Server::_buildResponse(const RequestContext& ctx, const RouteMatch& 
     return resp.toString();
 }
 
-/*
- * Queues an error response and arms EPOLLOUT. Built via make_error_response so a
- * custom error_page (resolved against the server root) is served when configured,
- * falling back to a generated page. conn->server_cfg is the port-default server
- * block — the best error_page source available before routing completes.
- * onClientOUT will drain and then set state=CLOSED; Connection::handle() closes.
- */
 /*
  * Hands a finished response back to the event loop: buffer it, reset the write
  * cursor, switch to SENDING_RESPONSE, and arm EPOLLOUT (+ EPOLLRDHUP) so
@@ -594,8 +636,14 @@ void Server::_queueResponse(Connection* conn, const std::string& response) {
     _epoll.modifyFd(conn->getFd(), EPOLLOUT | EPOLLRDHUP, conn);
 }
 
-void Server::_sendError(Connection* conn, int fd, int status) {
-    (void)fd;  // always conn->getFd(); _queueResponse arms the right socket
+/*
+ * Queues an error response and arms EPOLLOUT. Built via make_error_response so a
+ * custom error_page (resolved against the server root) is served when configured,
+ * falling back to a generated page. conn->server_cfg is the port-default server
+ * block — the best error_page source available before routing completes.
+ * onClientOUT will drain and then set state=CLOSED; Connection::handle() closes.
+ */
+void Server::_sendError(Connection* conn, int status) {
     Response resp = make_error_response(status, conn->server_cfg);
     resp.setHeader("Connection", "close");
     _queueResponse(conn, resp.toString());
@@ -630,8 +678,6 @@ void Server::onCgiPipeIN(Connection* conn) {
  * header block becomes 502 Bad Gateway.
  */
 void Server::_finalizeCgi(Connection* conn, bool readError) {
-    int client_fd = conn->getFd();
-
     // Reap the child without blocking the event loop. If it closed stdout but
     // hasn't exited, don't wait on it — kill it and reap (SIGKILL reaps fast).
     if (conn->cgi_pid > 0) {
@@ -652,7 +698,7 @@ void Server::_finalizeCgi(Connection* conn, bool readError) {
 
     if (response.empty()) {
         Logger::log(Logger::WARNING, "CGI produced no valid response -> 502");
-        _sendError(conn, client_fd, 502);
+        _sendError(conn, 502);
         return;
     }
 
@@ -842,7 +888,7 @@ void Server::_timeoutCgi(Connection* conn) {
     Logger::log(Logger::WARNING, "CGI timeout (pid=" + to_string(conn->cgi_pid) +
                                  ") on fd=" + to_string(client_fd) + " -> 504");
     _teardownCgi(conn);
-    _sendError(conn, client_fd, 504);
+    _sendError(conn, 504);
 }
 
 /*

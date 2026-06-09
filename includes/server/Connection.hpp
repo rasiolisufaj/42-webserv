@@ -59,10 +59,6 @@ class Connection : public IEventHandler
         // TIMEOUT MANAGEMENT
         std::time_t last_activity;
         std::time_t first_byte_time;
-        bool header_complete;
-        
-        // KEEP ALIVE
-        bool closeAfterWrite;
 
         // Cgi Process Management
         int cgi_in_fd;
@@ -70,31 +66,12 @@ class Connection : public IEventHandler
         pid_t cgi_pid;
         std::time_t cgi_start_time;
         std::vector<char> cgi_raw_output;
-        std::string pending_extra_headers;
 
         CgiJob cgi_job;
         size_t  cgi_sent_idx;
         CgiPipeWrapper *cgi_in_wrapper;
         CgiPipeWrapper *cgi_out_wrapper;
 
-        // File Streaming (for large files)
-        int      file_fd;
-        size_t   file_bytes_sent;
-        size_t   file_total_size;
-        bool     is_streaming_file;
-        
-        size_t   header_check_len;
-        size_t   chunk_raw_offset; // resumable chunked parser: offset in the raw buffer where the current chunk starts
-
-        std::vector<char>    chunk_decoded; // body bytes decoded from chunked encoding, used for CGI input
-        size_t   expected_request_total; // total expected request size (header + body) based on Content-Length or chunked encoding, used for connection timeout and to prevent DoS
-
-        // streaming state
-        int      upload_fd;
-        size_t   body_bytes_expected;
-        size_t   body_bytes_received;
-        bool     is_streaming_upload;
-    
         // METHODS
 
          /*

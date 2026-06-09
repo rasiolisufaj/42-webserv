@@ -52,6 +52,20 @@ class Server : public IServerCallback {
                                            int& errorStatus) const;
 
         /*
+         * Completeness check for a Transfer-Encoding: chunked body, walking the
+         * actual chunk framing from `body_start` (the offset of the first
+         * chunk-size line) rather than searching for the "0\r\n\r\n" byte pattern,
+         * which false-positives when chunk data contains that sequence and
+         * mis-handles chunk extensions / trailers. Uses the same rules as
+         * ChunkDecoder so detection and later decoding agree. `limit` is the
+         * largest body size allowed on this port ((size_t)-1 = unlimited), checked
+         * against the running decoded length for an early 413. Sets `errorStatus`
+         * (400 / 413) and returns REQ_ERROR on malformed framing or over-limit.
+         */
+        RequestReadiness _chunkedReadiness(const std::string& buffer, size_t body_start,
+                                           size_t limit, int& errorStatus) const;
+
+        /*
          * Copies `response` into the connection's out buffer, resets the write
          * cursor, moves it to SENDING_RESPONSE, and arms EPOLLOUT (plus EPOLLRDHUP)
          * so onClientOUT drains it. The single place that hands a finished response
@@ -89,7 +103,7 @@ class Server : public IServerCallback {
          * routing) still serves the matching custom error_page (or a generated
          * page) with a body, and always sets Connection: close.
          */
-        void _sendError(Connection* conn, int fd, int status);
+        void _sendError(Connection* conn, int status);
 
         /*
          * Tears down any CGI state attached to a connection: removes the CGI
@@ -105,7 +119,7 @@ class Server : public IServerCallback {
          * detaches the client socket from read events, and registers the CGI
          * stdin pipe so the request body can be streamed. On failure, sends 500.
          */
-        void _startCgi(Connection* conn, int client_fd);
+        void _startCgi(Connection* conn);
 
         /*
          * Removes the CGI stdin pipe from epoll, closes it, and frees its
