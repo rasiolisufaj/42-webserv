@@ -27,7 +27,7 @@ The `Makefile` compiles an **explicit `SRC` list** (not a wildcard glob), so a n
 ./webserv config/default.conf
 ```
 
-Example config files are in `config/`. The binary takes exactly one argument (the config file path).
+Example config files are in `config/` (`default.conf`, `multipleServers.conf`, `nginx.conf`, `one_server.conf`, `tester.conf`). The binary takes exactly one argument (the config file path).
 
 ## Architecture
 

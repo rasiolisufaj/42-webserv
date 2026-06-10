@@ -1,75 +1,167 @@
+:root {
+    --bg: #0b1220;
+    --panel: #111827;
+    --panel-head: #0e1626;
+    --ink: #e5edf5;
+    --muted: #8b9bb4;
+    --accent: #06b6d4;
+    --accent-bright: #38bdf8;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --error: #ef4444;
+    --line: #2a3a55;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+* {
+    box-sizing: border-box;
+    border-radius: 0;
+}
+
 body {
-    background-color: #050505;
-    color: #00FF41;
-    font-family: 'Courier New', Courier, monospace;
-    padding: 40px 0;
     margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.6;
+    background-color: var(--bg);
+    background-image:
+        linear-gradient(rgba(42, 58, 85, 0.35) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(42, 58, 85, 0.35) 1px, transparent 1px);
+    background-size: 24px 24px;
 }
 
-body::before{
-    content: " ";
+.panel {
+    width: 100%;
+    max-width: 520px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--accent);
+    padding: 0;
+    text-align: left;
+}
+
+/* terminal-window title bar */
+.panel::before {
+    content: "root@webserv:~# admin --status";
     display: block;
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    right: 0;
-    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-    background-size: 100% 2px;
-    pointer-events: none;
-    z-index: 2;
+    background: var(--panel-head);
+    border-bottom: 1px solid var(--line);
+    color: var(--accent-bright);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    padding: 8px 14px;
 }
 
-.panel{
-    position: relative;
-    z-index: 3;
-    border: 1px solid #008F11;
-    padding: 20px;
-    background-color: #0D0D0D;
-    max-width: 600px;
-    margin: 0 auto;
-    box-shadow: 0 0 10px rgba(0, 255, 65, 0.1);
-    text-align: center;
+/* push the real content off the title bar */
+.panel > * {
+    margin-left: 24px;
+    margin-right: 24px;
+}
+
+.panel > h1 {
+    margin: 22px 24px 12px;
+}
+
+.panel > .btn {
+    margin: 8px 24px 26px;
 }
 
 h1 {
-    font-size: 2.2rem;
-    margin-top: 0;
-    color: #FF003C;
-    text-shadow: 0 0 5px #FF003C;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--ink);
+}
+
+/* status LED before the heading */
+h1::before {
+    content: "";
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 10px;
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+    vertical-align: middle;
+}
+
+p {
+    margin: 8px 24px;
+    color: var(--muted);
+}
+
+/* terminal-style prompt prefix on body lines */
+p::before {
+    content: "› ";
+    color: var(--accent);
+}
+
+code {
+    background: #0a1424;
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    font-family: var(--mono);
+    font-size: 0.9em;
+    color: var(--accent-bright);
+}
+
+hr {
+    border: 0;
+    height: 1px;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--line) 0,
+        var(--line) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+    margin: 18px 24px;
 }
 
 .btn {
     display: inline-block;
+    padding: 11px 26px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent-bright);
     text-decoration: none;
-    background-color: black;
-    color: #00FF41;
-    border: 1px solid #008F11;
-    padding: 15px 30px;
-    transition: 1s;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.12s linear, color 0.12s linear;
 }
 
-.btn:hover{
-    background-color: #00FF41;
-    color: black;
+.btn::before {
+    content: "[ ";
+    color: var(--accent);
 }
 
-.panel h1 {
-    animation: blinker 1s linear infinite;
+.btn::after {
+    content: " ]";
+    color: var(--accent);
 }
 
-.panel hr
-{
-    border: 0;
-    height: 1px;
-    background: #008F11;
-    margin: 20px 0;
+.btn:hover {
+    background: var(--accent);
+    color: var(--bg);
 }
 
-@keyframes blinker {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+.btn:hover::before,
+.btn:hover::after {
+    color: var(--bg);
+}
+
+.btn:active {
+    background: var(--accent-bright);
+    border-color: var(--accent-bright);
 }
