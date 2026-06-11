@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 import json
 import os
+import time
 
-UPLOAD_DIR = "../upload_store"
+# CGI children chdir into their own dir (www/cgi-bin), so "../upload" resolves
+# to www/upload -- the SAME directory the /upload location uses as upload_store.
+# This keeps POST (create), DELETE (remove) and this listing perfectly in sync.
+UPLOAD_DIR = "../upload"
 response_data = []
 
-# Safely check if directory exists and read it
-if os.path.exists(UPLOAD_DIR) and os.path.isdir(UPLOAD_DIR):
-    for filename in os.listdir(UPLOAD_DIR):
+if os.path.isdir(UPLOAD_DIR):
+    for filename in sorted(os.listdir(UPLOAD_DIR)):
         filepath = os.path.join(UPLOAD_DIR, filename)
         if os.path.isfile(filepath):
-            size_bytes = os.path.getsize(filepath)
-            # Convert to KB for UI display
-            size_kb = round(size_bytes / 1024, 2)
-            response_data.append({"name": filename, "size_kb": size_kb})
+            stat = os.stat(filepath)
+            response_data.append({
+                "name": filename,
+                "size": stat.st_size,
+                "size_kb": round(stat.st_size / 1024.0, 2),
+                "date": time.strftime("%Y-%m-%d %H:%M:%S",
+                                      time.localtime(stat.st_mtime)),
+            })
 
-# Format the output strictly for the C++98 HttpHandler
 print("Content-Type: application/json\r\n")
 print(json.dumps(response_data))
