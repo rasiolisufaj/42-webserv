@@ -113,6 +113,15 @@ class Server : public IServerCallback {
         size_t _maxBodyLimitForPort(int port) const;
 
         /*
+         * Largest client_max_header_size across every server block listening on
+         * `port`. Header size is a server-level directive (no per-location
+         * override), used as an early 431 guard: a header block exceeding this
+         * maximum cannot be accepted by any server on that port, so it is rejected
+         * before the request is fully buffered. Returns (size_t)-1 if unlimited.
+         */
+        size_t _maxHeaderLimitForPort(int port) const;
+
+        /*
          * Queues an error response and arms EPOLLOUT. Routes through
          * make_error_response(conn->server_cfg) so a pre-routing failure (parse /
          * routing) still serves the matching custom error_page (or a generated

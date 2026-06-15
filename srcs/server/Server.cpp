@@ -295,8 +295,29 @@ Server::RequestReadiness Server::_requestReadiness(const std::vector<char>& buff
                                                    int port, int& errorStatus,
                                                    size_t& consumed) const {
     size_t header_end = findSeq(buffer, 0, "\r\n\r\n", 4);
-    if (header_end == std::string::npos)
+    size_t header_limit = _maxHeaderLimitForPort(port);
+    if (header_end == std::string::npos) {
+        // No header terminator yet. If what's buffered already exceeds the header
+        // limit, the header block alone is over-limit -> 431 (mirrors the early 413
+        // for bodies: reject before buffering more, so a header-only flood / a
+        // slowloris drip can't grow unbounded).
+        if (header_limit != 0 && header_limit != (size_t)-1 && buffer.size() > header_limit) {
+            Logger::log(Logger::WARNING, "Header block exceeds max header size " +
+                        to_string(header_limit) + " -> 431");
+            errorStatus = 431;
+            return REQ_ERROR;
+        }
         return REQ_INCOMPLETE;
+    }
+
+    // Header block complete: enforce client_max_header_size on the request line +
+    // headers (everything before the "\r\n\r\n" terminator).
+    if (header_limit != 0 && header_limit != (size_t)-1 && header_end > header_limit) {
+        Logger::log(Logger::WARNING, "Header block of " + to_string(header_end) +
+                    " bytes exceeds max header size " + to_string(header_limit) + " -> 431");
+        errorStatus = 431;
+        return REQ_ERROR;
+    }
 
     size_t body_start = header_end + 4;
     size_t body_received = buffer.size() - body_start;
@@ -667,6 +688,27 @@ size_t Server::_maxBodyLimitForPort(int port) const {
             if (eff > max)
                 max = eff;
         }
+    }
+    return max;
+}
+
+/*
+ * Largest client_max_header_size across every server block on `port`. Header size
+ * is a server-level directive (no per-location override, unlike the body limit),
+ * so there is no location dimension here. Used as an early 431 guard before the
+ * matching server is known: a header block over this maximum is too large for any
+ * server on the port. Returns (size_t)-1 if any matching server is unlimited.
+ */
+size_t Server::_maxHeaderLimitForPort(int port) const {
+    size_t max = 0;
+    for (size_t i = 0; i < _configs.size(); ++i) {
+        const ServerConfig& cfg = _configs[i];
+        if (cfg.port != port)
+            continue;
+        if (cfg.client_max_header_size == (size_t)-1)
+            return (size_t)-1;
+        if (cfg.client_max_header_size > max)
+            max = cfg.client_max_header_size;
     }
     return max;
 }
