@@ -3,10 +3,10 @@ import json
 import os
 import time
 
-# CGI children chdir into their own dir (www/cgi-bin), so "../upload" resolves
-# to www/upload -- the SAME directory the /upload location uses as upload_store.
-# This keeps POST (create), DELETE (remove) and this listing perfectly in sync.
-UPLOAD_DIR = "../upload"
+# CGI children chdir into their own dir (www/cgi-bin), so "../upload_store"
+# resolves to www/upload_store -- the SAME directory the /upload_store location
+# uses. This keeps POST (create), DELETE (remove) and this listing in sync.
+UPLOAD_DIR = "../upload_store"
 response_data = []
 
 if os.path.isdir(UPLOAD_DIR):

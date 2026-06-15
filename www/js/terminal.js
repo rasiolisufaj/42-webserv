@@ -205,7 +205,7 @@
     var pendingFile = null;
     function uploadFile(file) {
         if (!file) return;
-        var url = "/upload/" + encodeURIComponent(file.name);
+        var url = "/upload_store/" + encodeURIComponent(file.name);
         var bar = $("upBar"), label = $("upLabel");
         bar.style.width = "0%";
         label.textContent = "Uploading " + file.name + " (" + fmtBytes(file.size) + ") …";
@@ -268,7 +268,7 @@
     /*  4. INVENTORY  +  5. DELETE                                            */
     /* ====================================================================== */
     function deleteFile(name, afterReload) {
-        var url = "/upload/" + encodeURIComponent(name);
+        var url = "/upload_store/" + encodeURIComponent(name);
         $("deleteResp").innerHTML = '<div class="section-label">deleting ' + esc(name) + " …</div><pre> </pre>";
         return request("DELETE", url, {}).then(function (res) {
             renderResp("deleteResp", "DELETE", url, res, null);
@@ -323,12 +323,12 @@
           note: "directory without trailing slash → 301 (browser hides exact code)" },
         { label: "400 Bad Request", method: "GET",   url: "/%zz",               expect: 400,
           note: "invalid percent-encoding in target" },
-        { label: "403 Forbidden",   method: "POST",  url: "/upload/",           expect: 403, body: "x",
+        { label: "403 Forbidden",   method: "POST",  url: "/upload_store/",           expect: 403, body: "x",
           note: "upload onto a directory path" },
         { label: "404 Not Found",   method: "GET",   url: "/no-such-file-xyz",  expect: 404 },
         { label: "405 Method N/A",  method: "DELETE", url: "/",                 expect: 405,
           note: "DELETE on a GET/HEAD-only location" },
-        { label: "413 Too Large",   method: "POST",  url: "/upload/big.bin",    expect: 413, big: true,
+        { label: "413 Too Large",   method: "POST",  url: "/upload_store/big.bin",    expect: 413, big: true,
           note: "body over client_max_body_size (2 MB)" },
         { label: "500 Internal",    method: "GET",   url: "/cgi-bin/list_uploads.py", expect: 500,
           note: "hard to force legitimately — dashboard shows the ACTUAL code" }
@@ -358,8 +358,8 @@
     /* ====================================================================== */
     var METHODS = {
         GET:    { url: "/" },
-        POST:   { url: "/upload/method_test.txt", body: "method test body @ " + Date.now() },
-        DELETE: { url: "/upload/method_test.txt" },
+        POST:   { url: "/upload_store/method_test.txt", body: "method test body @ " + Date.now() },
+        DELETE: { url: "/upload_store/method_test.txt" },
         HEAD:   { url: "/" }
     };
     function initMethods() {
@@ -452,11 +452,11 @@
         { name: "Oversized header (~16 KB)", exp: "400/431/413 (over client_max_header_size 8 KB)",
           sendable: true, method: "GET", url: "/", bigHeader: true, bad: 200 },
         { name: "Oversized body (3 MB)", exp: "413 Payload Too Large",
-          sendable: true, method: "POST", url: "/upload/evil.bin", big: true, bad: 200 },
+          sendable: true, method: "POST", url: "/upload_store/evil.bin", big: true, bad: 200 },
         { name: "Malformed header (raw \\r injection)", exp: "400 Bad Request",
           sendable: false, cmd: "printf 'GET / HTTP/1.1\\r\\nHost: x\\r\\nBad Header\\r\\n\\r\\n' | nc 127.0.0.1 " + (location.port || 80) },
         { name: "Invalid chunked framing", exp: "400 Bad Request",
-          sendable: false, cmd: "printf 'POST /upload/x HTTP/1.1\\r\\nHost: x\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\nZZ\\r\\nbad\\r\\n' | nc 127.0.0.1 " + (location.port || 80) }
+          sendable: false, cmd: "printf 'POST /upload_store/x HTTP/1.1\\r\\nHost: x\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\nZZ\\r\\nbad\\r\\n' | nc 127.0.0.1 " + (location.port || 80) }
     ];
     function runSecTest(t) {
         if (!t.sendable) {

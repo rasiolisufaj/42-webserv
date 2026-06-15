@@ -71,7 +71,7 @@ c() { curl -s -o /dev/null -w "  [%{http_code}] $*\n" --max-time 5 "$@"; }
 echo ">> exercising request paths..."
 c "$base/"                                            # 200 static index
 c "$base/index.html"                                  # 200 file
-c "$base/public/"                                     # autoindex / index
+c "$base/upload_store/"                               # autoindex listing
 c -I "$base/"                                         # HEAD
 c "$base/does-not-exist"                              # 404 custom error page
 c -X POST --data "x=1" "$base/"                       # 405 (GET HEAD only) + Allow
@@ -82,12 +82,12 @@ c -X POST --data "name=valgrind" "$base/cgi-bin/hello.py"  # CGI POST body->stdi
 
 # File upload then delete (same upload_store dir)
 echo "leak-test-payload $(date)" > "$OUTDIR/.upload_probe"
-c -X POST --data-binary @"$OUTDIR/.upload_probe" "$base/upload/vg_probe.txt"
-c -X DELETE "$base/upload/vg_probe.txt"
+c -X POST --data-binary @"$OUTDIR/.upload_probe" "$base/upload_store/vg_probe.txt"
+c -X DELETE "$base/upload_store/vg_probe.txt"
 
 # Oversize body -> early 413 (limit is 2048000 bytes)
 head -c 3000000 /dev/zero | tr '\0' 'A' > "$OUTDIR/.big"
-c -X POST --data-binary @"$OUTDIR/.big" "$base/upload/big.txt"
+c -X POST --data-binary @"$OUTDIR/.big" "$base/upload_store/big.txt"
 rm -f "$OUTDIR/.upload_probe" "$OUTDIR/.big"
 
 # Keep-alive / pipelining on one connection
