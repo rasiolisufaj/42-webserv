@@ -49,6 +49,11 @@ void CgiManager::start(Connection* conn) {
     }
 
     conn->cgi_sent_idx = 0;
+    // Clear any stdout left over from a previous CGI run on this (keep-alive)
+    // connection. onPipeIN appends into cgi_raw_output, so without this reset a
+    // second CGI request on a reused socket would inherit the first response's
+    // bytes (its Content-Type header leaks into the body -> malformed output).
+    conn->cgi_raw_output.clear();
     conn->last_activity = std::time(NULL);  // baseline for the CGI inactivity timer
 
     try {
