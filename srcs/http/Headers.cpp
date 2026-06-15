@@ -168,6 +168,8 @@ void Headers::parseLine(const std::string &line)
 }
 
 // utils
+const std::map<std::string, std::string> &Headers::fields() const { return (_fields); }
+
 bool Headers::hasHeader(const std::string &name) const { return (_fields.find(to_lower_ascii(name)) != _fields.end()); }
 
 std::string Headers::getHeader(const std::string &name) const

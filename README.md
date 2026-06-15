@@ -6,13 +6,13 @@ Configuration File Format
 server{
     listen [port_number]; #Valid also [ip:port_number] #ip by default 127.0.0.1
     server_name [server_dns1];
-    client_max_body_size [size_kylo_bytes]; #by default 1024K
-    client_max_header_size [size_kylo_bytes]; #by default 8k
+    client_max_body_size [size_kylo_bytes]; #by default 10485760 bytes
+    client_max_header_size [size_kylo_bytes]; #by default 8192 bytes
     error_page [Error_number1] [Location_error_page1];
     error_page [Error_number2] [Location_error_page2];
     error_page [Error_number3] [Location_error_page3];
-    upload_store [Upload_path]; #Mandatory
-    root [root_path]; #Mandatory
+    upload_store [Upload_path]; #by default www/upload_store
+    root [root_path]; #by default www
     location [/path] {
         allow_methods [Method1] [Method2]; #By default GET HEAD if there is none "GET POST DELETE HEAD"
         root [path]; #inherit from server if empty

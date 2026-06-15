@@ -6,17 +6,15 @@
 /*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/06/01 11:54:20 by thodavid          #+#    #+#             */
-/*   Updated: 2026/06/01 14:31:12 by thodavid         ###   ########.fr       */
+/*   Updated: 2026/06/07 13:12:21 by thodavid         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "http/ConfigMatcher.hpp"
+#include "config/ConfigMatcher.hpp"
 #include <stdexcept>
 
 /*
-
-Cette requête correspond à quel server block et quelle location
-RequestContext + vector<ServerConfig>
+=> RequestContext vs vector<ServerConfig> (find the server{} block && the location{} block)
 => RouteMatch { server, location }
 */
 
@@ -40,6 +38,8 @@ bool ConfigMatcher::portMatch(const RequestContext &ctx,
 bool ConfigMatcher::locationMatch(const std::string &request_path,
                                   const std::string &location_path) const
 {
+    // most longer location who has a valide  préfix of request_path
+
     size_t i;
 
     if (location_path.empty() || request_path.empty())
@@ -78,10 +78,10 @@ const ServerConfig *ConfigMatcher::findServer(const RequestContext &ctx,
         if (portMatch(ctx, servers[i]))
         {
             if (serverNameMatch(ctx, servers[i]))
-                return (&servers[i]);
+                return (&servers[i]); // match: PORT + SERVERNAME
 
             if (server_candidate == NULL)
-                server_candidate = &servers[i];
+                server_candidate = &servers[i]; // FALLBACK (first server matching with the port)
         }
         i++;
     }
@@ -89,13 +89,14 @@ const ServerConfig *ConfigMatcher::findServer(const RequestContext &ctx,
     if (server_candidate != NULL)
         return (server_candidate);
 
-    throw(std::runtime_error("400 Bad Request: no matching server"));
+    throw(std::runtime_error("500 Internal Server Error: no matching server"));
 }
 
 const Location *ConfigMatcher::findLocation(const RequestContext &ctx,
                                             const ServerConfig &server) const
 {
     const Location *best;
+    static const Location default_location; // STATIC!!! Null Object: les defauts du ctor
     size_t best_len;
     size_t i;
 
@@ -116,8 +117,7 @@ const Location *ConfigMatcher::findLocation(const RequestContext &ctx,
     }
 
     if (best == NULL)
-        throw(std::runtime_error("404 Not Found: no matching location"));
-
+        return (&default_location);
     return (best);
 }
 

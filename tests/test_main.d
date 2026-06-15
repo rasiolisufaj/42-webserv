@@ -7,8 +7,8 @@ tests/test_main: tests/test_main.cpp \
  tests/../includes/http/RequestContext.hpp \
  tests/../includes/server/Connection.hpp \
  tests/../includes/server/IEventHandler.hpp \
- tests/../includes/server/IServerCallback.hpp \
- tests/../includes/cgi/Cgi.hpp includes/config/ServerConfig.hpp \
+ tests/../includes/server/IServerCallback.hpp includes/cgi/CgiJob.hpp \
+ tests/../includes/cgi/CGIHandler.hpp includes/config/ServerConfig.hpp \
  tests/../includes/utils/Logger.hpp
 tests/../includes/config/ConfigParser.hpp:
 tests/../includes/config/ServerConfig.hpp:
@@ -20,6 +20,7 @@ tests/../includes/http/RequestContext.hpp:
 tests/../includes/server/Connection.hpp:
 tests/../includes/server/IEventHandler.hpp:
 tests/../includes/server/IServerCallback.hpp:
-tests/../includes/cgi/Cgi.hpp:
+includes/cgi/CgiJob.hpp:
+tests/../includes/cgi/CGIHandler.hpp:
 includes/config/ServerConfig.hpp:
 tests/../includes/utils/Logger.hpp:

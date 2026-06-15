@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include <cstring>
+#include <csignal>
 #include <vector>
 #include <sys/epoll.h>
 #include "../includes/config/ConfigParser.hpp"
@@ -8,8 +9,12 @@
 #include "../includes/http/RequestContext.hpp"
 #include "../includes/server/Connection.hpp"
 #include "../includes/server/IServerCallback.hpp"
-#include "../includes/cgi/Cgi.hpp"
+#include "../includes/cgi/CGIHandler.hpp"
 #include "../includes/utils/Logger.hpp"
+
+// Production g_running lives in main.cpp (excluded from the test build); the test
+// harness has its own main(), so it provides its own definition for Server.o.
+volatile sig_atomic_t g_running = 1;
 
 // Mock callback for testing Connection
 class MockServerCallback : public IServerCallback
@@ -120,8 +125,8 @@ void test_connection_lifecycle()
         assert(conn->state == Connection::READING_HEADER && "Initial state should be READING_HEADER");
         assert(conn->in_buffer.size() == 0 && "Input buffer should be empty");
         assert(conn->out_buffer.size() == 0 && "Output buffer should be empty");
-        assert(conn->upload_fd == -1 && "Upload fd should be uninitialized (-1)");
-        assert(conn->expected_request_total == 0 && "Expected total should be 0");
+        assert(conn->read_idx == 0 && "Read index should be 0");
+        assert(conn->write_idx == 0 && "Write index should be 0");
 
         std::cout << "✓ Connection created successfully\n";
 

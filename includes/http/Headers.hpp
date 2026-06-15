@@ -29,6 +29,7 @@ public:
     void        parseLine(const std::string& line);
     bool        hasHeader(const std::string& name) const;
     std::string getHeader(const std::string& name) const;
+    const std::map<std::string, std::string>& fields() const;
     size_t      getContentLength() const;
     bool        wantsClose() const;
     HostInfo    getHost() const;

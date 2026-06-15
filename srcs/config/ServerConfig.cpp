@@ -4,10 +4,10 @@
 ServerConfig::ServerConfig() {
     port = 8080;         
     host = "127.0.0.1";
-    client_max_body_size = 1024;
-    client_max_header_size = 8;
-    upload_store = "";
-    root = "";
+    client_max_body_size = 10485760;
+    client_max_header_size = 8192;
+    upload_store = "www/upload_store";
+    root = "www";
 }
 
 ServerConfig::~ServerConfig() {}

@@ -17,10 +17,9 @@
 Connection::Connection(int fd, const ServerConfig *serverCfg)
     : _fd(fd), server_cfg(serverCfg), read_idx(0), write_idx(0),
       state(READING_HEADER), last_activity(std::time(NULL)),
-      first_byte_time(0), header_complete(false), closeAfterWrite(false),
-      file_fd(-1), file_bytes_sent(0), file_total_size(0), is_streaming_file(false),
-      header_check_len(0), chunk_raw_offset(0), expected_request_total(0),
-      upload_fd(-1), body_bytes_expected(0), body_bytes_received(0), is_streaming_upload(false) {}
+      first_byte_time(0), keep_alive(false),
+      cgi_in_fd(-1), cgi_out_fd(-1), cgi_pid(-1), cgi_start_time(0),
+      cgi_sent_idx(0), cgi_in_wrapper(NULL), cgi_out_wrapper(NULL) {}
 
 Connection::~Connection()
 {
@@ -29,16 +28,30 @@ Connection::~Connection()
         close(this->_fd);
         this->_fd = -1;
     }
-    if (this->file_fd != -1)
+    // CGI cleanup: close parent pipe ends, reap the child, free epoll wrappers.
+    // The Server is responsible for removing these fds from epoll before the
+    // Connection is destroyed (see CgiManager::teardown); here we guarantee the
+    // OS resources are released even if that path was missed.
+    if (this->cgi_in_fd != -1)
     {
-        close(this->file_fd);
-        this->file_fd = -1;
+        close(this->cgi_in_fd);
+        this->cgi_in_fd = -1;
     }
-    if (this->upload_fd != -1)
+    if (this->cgi_out_fd != -1)
     {
-        close(this->upload_fd);
-        this->upload_fd = -1;
+        close(this->cgi_out_fd);
+        this->cgi_out_fd = -1;
     }
+    if (this->cgi_pid > 0)
+    {
+        kill(this->cgi_pid, SIGKILL);
+        waitpid(this->cgi_pid, NULL, 0);
+        this->cgi_pid = -1;
+    }
+    delete this->cgi_in_wrapper;
+    this->cgi_in_wrapper = NULL;
+    delete this->cgi_out_wrapper;
+    this->cgi_out_wrapper = NULL;
 }
 
 /*
@@ -80,6 +93,26 @@ void Connection::setState(ConnectionState new_state)
 */
 int Connection::getFd() const {return this->_fd;}
 
+/*
+    * Forwards epoll events on a CGI pipe to the matching Server callback.
+    * The write end (stdin, !is_read_end) drives onCgiPipeOUT; the read end
+    * (stdout, is_read_end) drives onCgiPipeIN. Error/hangup is forwarded to the
+    * same side so the Server can finalize or abort the CGI exchange.
+*/
+void CgiPipeWrapper::handle(uint32_t event, IServerCallback &callback)
+{
+    if (is_read_end)
+    {
+        if (event & (EPOLLIN | EPOLLERR | EPOLLHUP))
+            callback.onCgiPipeIN(this->conn);
+    }
+    else
+    {
+        if (event & (EPOLLOUT | EPOLLERR | EPOLLHUP))
+            callback.onCgiPipeOUT(this->conn);
+    }
+}
+
 void Connection::handle(uint32_t event, IServerCallback &callback)
 {
     if (event & (EPOLLERR | EPOLLHUP))
@@ -92,7 +125,12 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
 
     if (event & EPOLLRDHUP)
     {
-        this->closeAfterWrite = true;
+        // Peer closed its write side: it will send no further requests, so do not
+        // keep the connection alive past the current response.
+        this->keep_alive = false;
+        // If there is no pending read/write to service in this same event, close
+        // now; otherwise let the IN/OUT handler run first (it closes once the
+        // response is drained, since keep_alive is now false).
         if (!(event & (EPOLLIN | EPOLLOUT)))
         {
             this->state = CLOSED;

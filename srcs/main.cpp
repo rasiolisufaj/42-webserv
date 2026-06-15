@@ -1,113 +1,56 @@
-#include "config/ConfigParser.hpp"
-#include "http/Request.hpp"
-#include "server/Server.hpp"
-#include "cgi/Cgi.hpp"
-#include <fcntl.h>
-#include "http/RequestContext.hpp"
-#include <iostream>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <stdio.h>
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   main.cpp                                           :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: raisufaj <raisufaj@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/06/07 12:08:17 by thodavid          #+#    #+#             */
+/*   Updated: 2026/06/15 18:19:40 by raisufaj         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
 
-int main(int ac, char **av)
+#include "config/ConfigParser.hpp"
+#include "server/Server.hpp"
+#include "utils/Logger.hpp"
+#include <csignal>
+#include <cstdlib>
+#include <iostream>
+
+// Cleared by the signal handler so Server::run()'s event loop returns and the
+// Server/Connection/Socket destructors run (clean shutdown, no leaked fds).
+// Starts at 1 (running); the handler flips it to 0 (stop).
+volatile sig_atomic_t g_running = 1;
+
+static void signalHandler(int) { g_running = 0; }
+
+int main(int argc, char **argv)
 {
+    if (argc != 2)
+    {
+        std::cerr << "Usage: " << argv[0] << " <config_file>" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    // SIGINT/SIGTERM: flip g_running instead of terminating, so the loop unwinds cleanly. 
+    // SIGPIPE: ignore, so a write to a dead CGI pipe returns EPIPE instead of killing the server.
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+    std::signal(SIGPIPE, SIG_IGN);
+
     try
     {
-        if (ac != 2)
-            throw(std::runtime_error("Enter an argument and try again\n===BYE WEBSERV==="));
-        std::cout << "\n===WebServ is running===\n\n";
-        /*--------------------------------------------------------------------*/
+        ConfigParser parser;
+        if (parser.parseConfig(argv[1]) != 0)
+            return EXIT_FAILURE;
 
-        /*
-        parsing RQUEST
-        */
-
-        Request request;
-        RequestContext ctx;
-        std::string raw_get =
-            "GET /cgi-bin/cgi_post.py?Name=Leny&proyect=Webserv HTTP/1.1\r\n"
-            "Host: localhost\r\n"
-            "User-Agent: curl/8.5.0\r\n"
-            "\r\n";
-
-        std::cout << "\n+++CONFIG PARSER RQST+++\n";
-        request.parse(raw_get);
-        ctx.build(request, 8081);
-        std::cout << "method: " << ctx.method() << "\n";
-        std::cout << "target: " << ctx.target() << "\n";
-        /*--------------------------------------------------------------------*/
-
-        /*
-        parsing CONFIGFilE
-        */
-
-        std::cout << "\n+++CONFIG PARSER CONFFIle+++\n";
-
-        ConfigParser Parser;
-
-        if (Parser.parseConfig(av[1]) != 0)
-            return (EXIT_FAILURE);
-
-        const std::vector<ServerConfig> &all_servers = Parser.getServers();
-        for (size_t i = 0; i < all_servers.size(); i++)
-        {
-            std::cout << "call me Maybe\n";
-            all_servers[i].print_servers();
-        }
-        // const std::vector<ServerConfig> &all_servers = Parser.getServers();
-        // const ServerConfig &my_server = all_servers[0];
-        // const Location &loc = my_server.locations[0];
-        /*--------------------------------------------------------------------*/
-
-        /*
-        RQST vs CONFIG
-        */
-
-        /*
-            ----> Which SERV
-            ----> Which LOCATION
-            ----> Check METHOD
-            ----> Check
-            ----> BUILD RESPONSE_STRUCT
-
-            ConfigMatcher       -> trouve server/location
-            ResponseBuilder     -> construit la réponse
-            HttpHandler         -> orchestre parser + matcher + builder
-
-            1. ConfigMatcher
-            2. Response
-            3. ResponseBuilder
-            4. HttpHandler
-        */
-        std::cout << "\n+++CONFIG PARSER CONFFIle+++\n";
-
-        // ConfigMatcher
-
-
-        /*--------------------------------------------------------------------*/
-
-        /*
-        SERVER ENGINE
-        */
-
-        std::cout << "\n+++SERVER CORE LOG+++\n";
-
-        try
-        {
-            Server server(all_servers);
-            server.run();
-        }
-        catch (const std::exception &e)
-        {
-            std::cerr << "Server error: " << e.what() << '\n';
-            return (EXIT_FAILURE);
-        }
+        Server server(parser.getServers());
+        server.run();
     }
-
-    catch (std::runtime_error &e)
+    catch (const std::exception &e)
     {
-        std::cout << "Error: " << e.what() << '\n';
-        return (EXIT_FAILURE);
+        Logger::log(Logger::ERROR, std::string("Fatal: ") + e.what());
+        return EXIT_FAILURE;
     }
-    return (EXIT_SUCCESS);
+    return EXIT_SUCCESS;
 }
