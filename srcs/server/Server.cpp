@@ -16,8 +16,12 @@
 #include <unistd.h>
 #include <cstring>
 #include <ctime>
+#include <csignal>
 #include <set>
 #include <algorithm>
+
+// Defined in main.cpp; cleared by the SIGINT/SIGTERM handler so run() returns.
+extern volatile sig_atomic_t g_running;
 
 /*
  * Finds the first occurrence of the byte sequence [seq, seq+seqlen) in `buf`
@@ -103,7 +107,7 @@ void Server::run() {
 
     Logger::log(Logger::INFO, "Server event loop starting...");
 
-    while (_running) {
+    while (_running && g_running) {
         int nfds = _epoll.wait(1000); // 1s timeout
 
         if (nfds == -1) {

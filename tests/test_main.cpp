@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include <cstring>
+#include <csignal>
 #include <vector>
 #include <sys/epoll.h>
 #include "../includes/config/ConfigParser.hpp"
@@ -10,6 +11,10 @@
 #include "../includes/server/IServerCallback.hpp"
 #include "../includes/cgi/CGIHandler.hpp"
 #include "../includes/utils/Logger.hpp"
+
+// Production g_running lives in main.cpp (excluded from the test build); the test
+// harness has its own main(), so it provides its own definition for Server.o.
+volatile sig_atomic_t g_running = 1;
 
 // Mock callback for testing Connection
 class MockServerCallback : public IServerCallback
