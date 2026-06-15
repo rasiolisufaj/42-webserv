@@ -102,7 +102,7 @@ This layer turns a routed request into a finished HTTP response **in memory**. I
 - **CGI end-to-end** (`CgiHandler::buildJob`/`execute` + `Server` dispatch and pipe callbacks): GET with query string, POST body streamed to stdin, `Status:` header → HTTP status, 502 on empty/malformed output, 5s-inactivity / 60s-hard timeout → 504, child kill+reap (no zombies), `O_NONBLOCK` + `FD_CLOEXEC` on pipe fds, `SIGPIPE` ignored.
 - **Static response serving, wired end-to-end** (`ResponseBuilder` + `RouteContext`/`RouteContextBuilder`, `Response`, `HttpStatus`, `MimeTypes`, called from `Server::_buildResponse`): GET/HEAD, autoindex, 301 trailing-slash, POST/DELETE writes, `return` redirects, MIME typing. Verified with `curl` (200 index, dir→301, POST→201, DELETE, HEAD, 405+`Allow`, 413, 302 redirect).
 - **Unified error handling** (`make_error_response`): both `ResponseBuilder` errors and the server's pre-routing errors serve custom `error_page` (resolved against server root) with a generated fallback; pre-routing status codes recovered via `status_from_exception` (501/505/413/400, not collapsed to 400).
-- **Connection timeouts** (`_checkTimeouts`, swept ~1Hz from the event loop): non-CGI clients idle ≥30s are closed via `onCloseConnection` (slowloris/stall guard); CGI exchanges enforce 5s-inactivity / 60s-hard → 504. `last_activity` is reset on every client read/write and CGI I/O. Satisfies the subject's "a request must never hang indefinitely."
+- **Connection timeouts** (`_checkTimeouts`, swept ~1Hz from the event loop): two distinct deadlines for ordinary clients — a request mid-arrival (`first_byte_time != 0`) is closed once it exceeds the **60s absolute `REQUEST_TIMEOUT`** anchored to `first_byte_time` (a slowloris/slow-drip client can't defer this by trickling bytes, since the deadline is *not* reset by later reads), while a connection with no request in flight (freshly accepted but silent, or draining a response) is closed after **30s `CLIENT_TIMEOUT`** of `last_activity` inactivity; both close via `onCloseConnection`. CGI exchanges enforce 5s-inactivity / 60s-hard → 504. `last_activity` is reset on every client read/write and CGI I/O. Satisfies the subject's "a request must never hang indefinitely."
 
 **Not yet implemented / stubs:**
 - `srcs/main.cpp` is currently a **developer scratchpad**: it parses a hardcoded request and demos the matcher/`Response` before constructing the real `Server` and calling `run()`. The demo block above `Server server(all_servers)` is not part of the production path and should be stripped.
@@ -110,7 +110,6 @@ This layer turns a routed request into a finished HTTP response **in memory**. I
 - (Keep-alive is now implemented — see the Server/event layer above. Persistent connections, pipelining, and per-request `Connection`-header negotiation all work; errors and `EPOLLRDHUP` force close.)
 - CGI POST body currently comes from `ctx.body()` (fully-parsed request); not yet sourced from streamed/chunked uploads (`Connection::chunk_decoded`)
 - `SessionManager` — empty `.cpp`
-- `first_byte_time` is initialized but unused — the idle timeout relies solely on `last_activity` (a single flat timer, not a separate header/body deadline).
 
 ## Config File Syntax
 

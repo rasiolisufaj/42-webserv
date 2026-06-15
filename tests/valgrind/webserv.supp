@@ -1,0 +1,100 @@
+# ===========================================================================
+# webserv.supp — valgrind suppressions for PREBUILT/library allocations only.
+#
+# Purpose: hide leaks/"still reachable" that originate inside libc, the dynamic
+# loader (ld-linux), libstdc++, and NSS modules — none of which webserv can
+# free — so the report shows only allocations made by *your* code.
+#
+# Each block suppresses a specific library origin. They deliberately do NOT
+# match any frame in srcs/ — if one of your own functions appears in a leak
+# trace it will still be reported. Wildcards (...) tolerate libc/glibc version
+# differences between your machine and the 42 cluster.
+#
+#   valgrind --leak-check=full --show-leak-kinds=all \
+#            --suppressions=tests/valgrind/webserv.supp ./webserv config/default.conf
+# ===========================================================================
+
+# --- getaddrinfo() / NSS: dlopen's libnss_files & libnss_dns; never freed -----
+{
+   libc-getaddrinfo-nss-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible,definite,indirect
+   ...
+   fun:getaddrinfo
+}
+{
+   libc-nss-module-load
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible,definite,indirect
+   ...
+   fun:__nss_*
+}
+{
+   libc-gethostby-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible,definite,indirect
+   ...
+   fun:gethostbyname*
+}
+
+# --- dynamic loader (ld-linux): shared-object bookkeeping kept until exit ------
+{
+   ld-dlopen-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible,definite,indirect
+   ...
+   fun:_dl_*
+}
+{
+   ld-dlopen-obj-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible,definite,indirect
+   ...
+   obj:*/ld-*.so*
+}
+{
+   libdl-dlopen-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable,possible,definite,indirect
+   ...
+   fun:dlopen*
+}
+
+# --- libc process init: allocations made before main(), reclaimed by the OS ---
+{
+   libc-start-main-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:__libc_start_main
+}
+{
+   libc-tzset-localtime-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:__tz*
+}
+
+# --- libstdc++ runtime: locale facets & C++ exception emergency pool ----------
+{
+   libstdcxx-locale-init-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:_ZNSt8ios_base4InitC1Ev
+}
+{
+   libstdcxx-cxa-emergency-pool-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:__cxa_get_globals
+}
+{
+   libstdcxx-obj-reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   obj:*/libstdc++.so*
+}
