@@ -1,6 +1,7 @@
 *.o.DS_Store
 .DS_Store
 .vscode
+.claude
 DEBUG_TOOLKIT.md
 EFFICIENCY_REVIEW.md
 EXEC_SUMMARY.md
