@@ -162,7 +162,7 @@ curl -X DELETE http://localhost:8080/upload/file.txt
 curl -X UNKNOWN http://localhost:8080/  # expect 501
 ```
 
-`www/cgi-bin/` contains Python CGI scripts (`cgi_post.py`, `sum.py`) and a shell script (`status.sh`) for manual CGI testing. Both `tests/test.py` and `tests/test_basic.sh` are placeholder stubs.
+`www/cgi-bin/` contains Python CGI scripts for manual CGI testing: `hello.py`, `list_uploads.py`, `loop.py` (infinite loop — exercises the CGI hard-timeout path), and `slow.py` (delayed output — exercises the 5s-inactivity timeout). Both `tests/test.py` and `tests/test_basic.sh` are placeholder stubs.
 
 ### Valgrind harness (`tests/valgrind/`)
 

@@ -3,10 +3,13 @@ import json
 import os
 import time
 
-# CGI children chdir into their own dir (www/cgi-bin), so "../upload_store"
-# resolves to www/upload_store -- the SAME directory the /upload_store location
-# uses. This keeps POST (create), DELETE (remove) and this listing in sync.
-UPLOAD_DIR = "../upload_store"
+# The server exports the route's effective upload_store as the UPLOAD_STORE env
+# var (already made absolute), so this listing follows whatever path the config
+# sets -- e.g. `upload_store www/upload_store_rasiol;`. This keeps POST (create),
+# DELETE (remove) and this listing in sync with the configured directory.
+# Fallback "../upload_store" matches the default when run outside the server
+# (CGI children chdir into www/cgi-bin, so it resolves to www/upload_store).
+UPLOAD_DIR = os.environ.get("UPLOAD_STORE", "../upload_store")
 response_data = []
 
 if os.path.isdir(UPLOAD_DIR):

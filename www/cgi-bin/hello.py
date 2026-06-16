@@ -9,5 +9,5 @@ print("")
 print("Hello from CGI")
 print("METHOD=", os.environ.get("REQUEST_METHOD", ""))
 print("QS=", os.environ.get("QUERY_STRING", ""))
-print("COOKIE=", os.environ.get("HTTP_COOKIE", ""))  # <-- Added this line
+print("COOKIE=", os.environ.get("HTTP_COOKIE", ""))
 print("BODY=", body)
