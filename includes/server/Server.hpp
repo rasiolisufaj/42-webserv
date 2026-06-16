@@ -31,6 +31,15 @@ class Server : public IServerCallback {
         bool                             _running;
         std::time_t                      _last_timeout_check;  // throttles the sweep to ~1Hz
         CgiManager                       _cgi;  // owns the CGI lifecycle (declared after _epoll)
+        // Handler pointers (Connection / CgiPipeWrapper) freed while the current
+        // epoll batch is still being processed. epoll_wait returns a snapshot of
+        // ready events, but handling one event can free a handler that a later
+        // event in the same batch points to (e.g. a client EPOLLHUP tears down a
+        // connection while its CGI pipe still has a queued event, or _checkTimeouts
+        // closes a connection that has a pending event). run() skips any event
+        // whose handler is in this set, preventing a use-after-free. Cleared at the
+        // start of every loop iteration, so it only ever holds this batch's frees.
+        std::set<const void*>            _retired;
 
         // Result of inspecting a partially-read client buffer (see _requestReadiness).
         enum RequestReadiness {
@@ -147,6 +156,16 @@ class Server : public IServerCallback {
          * static path, which emits the canonical 405 (+ Allow + error page).
          */
         bool _isMethodAllowed(const RouteMatch& match, const std::string& method) const;
+
+        /*
+         * Records a handler pointer (a Connection or a CGI-pipe wrapper) that is
+         * being freed while the current epoll batch is still being processed, so
+         * run() skips any not-yet-handled event in the same batch that still points
+         * to it. Without this, dereferencing that stale event's data.ptr would be a
+         * use-after-free. Called by onCloseConnection and by CgiManager when it
+         * tears down pipe wrappers. The set is cleared each loop iteration.
+         */
+        void _retireHandler(const void* handler);
 
         Server(const Server& other);
         Server& operator=(const Server& rhs);

@@ -119,8 +119,15 @@ void CgiManager::closePipe(int& fd, CgiPipeWrapper*& wrapper, const char* label)
         close(fd);
         fd = -1;
     }
-    delete wrapper;
-    wrapper = NULL;
+    if (wrapper != NULL) {
+        // Retire before freeing: this pipe's sibling fd (or the client socket) may
+        // still have an event queued in the current epoll batch. run() compares the
+        // pointer value against _retired and skips that stale event instead of
+        // dereferencing this freed wrapper (use-after-free).
+        _server._retireHandler(wrapper);
+        delete wrapper;
+        wrapper = NULL;
+    }
 }
 
 /*

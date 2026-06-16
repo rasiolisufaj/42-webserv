@@ -115,8 +115,16 @@ void Server::run() {
             break;
         }
 
+        // Fresh page for this batch: only handlers freed *during the processing
+        // below* (or by _checkTimeouts just after) must be skipped. Cleared here so
+        // a pointer retired last iteration can't falsely skip a new handler that
+        // happens to reuse its address.
+        _retired.clear();
+
         // Enforce timeouts on every wake-up (throttled to ~1Hz internally). Runs
         // whether or not events fired, so a stuck CGI is reaped under load too.
+        // This may close (and retire) connections that still have events queued in
+        // the snapshot below — the _retired check in the loop skips those.
         _checkTimeouts();
 
         if (nfds == 0)
@@ -129,12 +137,22 @@ void Server::run() {
         }
 
         for (int i = 0; i < nfds; ++i) {
-            IEventHandler* handler = static_cast<IEventHandler*>(events[i].data.ptr);
-            if (!handler) {
+            void* ptr = events[i].data.ptr;
+            if (!ptr) {
                 Logger::log(Logger::WARNING, "epoll returned null handler");
                 continue;
             }
 
+            // A connection owns several epoll fds (client socket + CGI pipes), and
+            // epoll_wait already returned a snapshot of ready events. Handling an
+            // earlier event in this same batch may have freed the handler this one
+            // points to (connection torn down, CGI pipes closed). Dereferencing
+            // data.ptr then would be a use-after-free, so skip it. (We only compare
+            // the pointer value here — never dereference the freed handler.)
+            if (_retired.count(ptr))
+                continue;
+
+            IEventHandler* handler = static_cast<IEventHandler*>(ptr);
             try {
                 handler->handle(events[i].events, *this);
             } catch (const std::exception& e) {
@@ -573,9 +591,23 @@ void Server::onCloseConnection(int fd, Connection* conn) {
 
     std::map<int, Connection*>::iterator it = _connections.find(fd);
     if (it != _connections.end()) {
+        // Retire before freeing: another event for this same connection may still
+        // sit unprocessed in the current epoll batch. _cgi.teardown above already
+        // retired its CGI pipe wrappers; this covers the client socket handler.
+        _retireHandler(it->second);
         delete it->second;
         _connections.erase(it);
     }
+}
+
+/*
+ * Marks `handler` as freed during the current epoll batch so run() skips any
+ * not-yet-processed event still pointing to it (see _retired). Only the pointer
+ * value is stored — the object is being destroyed and must not be dereferenced.
+ */
+void Server::_retireHandler(const void* handler) {
+    if (handler)
+        _retired.insert(handler);
 }
 
 /*
