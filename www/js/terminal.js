@@ -252,6 +252,8 @@
         dz.addEventListener("click", function () { input.click(); });
         input.addEventListener("change", function () {
             if (input.files.length) uploadFile(input.files[0]);
+            // Reset the input so re-selecting the SAME file fires "change" again
+            input.value = "";
         });
         ["dragenter", "dragover"].forEach(function (ev) {
             dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add("drag"); });

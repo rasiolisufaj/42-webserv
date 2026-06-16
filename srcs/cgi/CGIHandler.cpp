@@ -74,6 +74,22 @@ bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
   env["SCRIPT_NAME"] = url_path;
   env["QUERY_STRING"] = ctx.query();
   env["PATH_INFO"] = "";
+
+  // Export the effective upload directory for this route so CGI scripts (e.g.
+  // list_uploads.py) can locate uploads no matter what `upload_store` the config
+  // sets. The location's own upload_store wins, else the server's. The child
+  // chdir's into the script's dir before running, so a relative config path
+  // would be misresolved there -- make it absolute against the server's CWD now.
+  std::string upload =
+      loc.upload_store.empty() ? server.upload_store : loc.upload_store;
+  if (!upload.empty() && upload[0] != '/')
+  {
+    char cwd[4096];
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+      upload = std::string(cwd) + "/" + upload;
+  }
+  env["UPLOAD_STORE"] = upload;
+
   env["REMOTE_ADDR"] = "127.0.0.1";
   env["SERVER_PORT"] = ctx.effectiveHost().port;
   env["SERVER_NAME"] = ctx.effectiveHost().name;
