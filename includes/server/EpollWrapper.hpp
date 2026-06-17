@@ -11,7 +11,7 @@ class EpollWrapper
 
         int _epoll_fd;
         static const int MAX_EVENTS = 1024;
-        std::vector<struct epoll_event> _events;
+        std::vector<struct epoll_event> _events; // Internal storage for epoll events, used in wait() and getEvents()
     
     public:
         EpollWrapper();

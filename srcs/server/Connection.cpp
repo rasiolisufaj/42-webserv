@@ -28,10 +28,7 @@ Connection::~Connection()
         close(this->_fd);
         this->_fd = -1;
     }
-    // CGI cleanup: close parent pipe ends, reap the child, free epoll wrappers.
-    // The Server is responsible for removing these fds from epoll before the
-    // Connection is destroyed (see CgiManager::teardown); here we guarantee the
-    // OS resources are released even if that path was missed.
+    // CGI cleanup: close pipes, kill the process, and delete wrappers
     if (this->cgi_in_fd != -1)
     {
         close(this->cgi_in_fd);
@@ -123,10 +120,9 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
         return; // 'this' deleted — must not access any member after this point
     }
 
+    // EPOLLRDHUP: the peer closed its write side. No further requests will be sent.
     if (event & EPOLLRDHUP)
     {
-        // Peer closed its write side: it will send no further requests, so do not
-        // keep the connection alive past the current response.
         this->keep_alive = false;
         // If there is no pending read/write to service in this same event, close
         // now; otherwise let the IN/OUT handler run first (it closes once the
@@ -139,6 +135,7 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
         }
     }
 
+    // EPOLLIN: the client sent data (or closed its write side, which is handled above).
     if (event & EPOLLIN)
     {
         callback.onClientIN(this);
@@ -149,6 +146,7 @@ void Connection::handle(uint32_t event, IServerCallback &callback)
         }
     }
 
+    // EPOLLOUT: the client socket is writable (ready to send data).
     if (event & EPOLLOUT)
     {
         callback.onClientOUT(this);

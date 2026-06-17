@@ -27,15 +27,15 @@ The `Makefile` compiles an **explicit `SRC` list** (not a wildcard glob), so a n
 ./webserv config/default.conf
 ```
 
-Example config files are in `config/` (`default.conf`, `multipleServers.conf`, `nginx.conf`, `one_server.conf`, `tester.conf`). The binary takes exactly one argument (the config file path).
+Example config files are in `config/` (`default.conf`, `eval_demo.conf`, `multipleServers.conf`, `nginx.conf`, `one_server.conf`, `tester.conf`). The binary takes exactly one argument (the config file path). `eval_demo.conf` is deliberately divergent from `default.conf` (different port `9090`, `server_name webserv.eval`, upload dir) but keeps the same route layout (`/`, `/cgi-bin`, `/upload_store`, `/errors`) the static dashboard frontend in `www/` depends on — it exists to prove the served site is config-portable.
 
 ## Architecture
 
 Three developers, each owns a layer:
 
-- **Leny** (`lellanos`) — config layer (`srcs/config/`, `includes/config/`) + CGI layer (`srcs/cgi/`, `includes/cgi/`)
+- **Leny** (`lellanos`) — config layer (`srcs/config/`, `includes/config/`)
 - **Thomas** (`thodavid`) — HTTP parsing layer (`srcs/http/`, `includes/http/`)
-- **Rasiol** (`risufaj`) — server/event layer (`srcs/server/`, `includes/server/`)
+- **Rasiol** (`risufaj`) — server/event layer (`srcs/server/`, `includes/server/`) + CGI layer (`srcs/cgi/`, `includes/cgi/`)
 
 ### Config layer
 
@@ -70,7 +70,7 @@ This layer turns a routed request into a finished HTTP response **in memory**. I
 ### CGI layer
 
 - `CgiHandler` (`srcs/cgi/CGIHandler.cpp`, `includes/cgi/CGIHandler.hpp`) — static utility class, fully wired into the event loop. Two public methods:
-  - `buildJob(ctx, server, loc, job)` → `bool` — populates a `CgiJob` from a routed request: resolves the interpreter by the script's file extension (`loc.cgi`), the effective document root (`loc.root` or, if empty, `server.root`), splits the script into `working_dir` + bare-filename `script_path` (the child `chdir`s into `working_dir`, so `script_path` is relative and the full path is exported via `PATH_TRANSLATED`/`SCRIPT_FILENAME`), copies the request body, and builds the CGI/1.1 env. Returns `false` (job untouched) when the target isn't a CGI request.
+  - `buildJob(ctx, server, loc, job)` → `bool` — populates a `CgiJob` from a routed request: resolves the interpreter by the script's file extension (`loc.cgi`), the effective document root (`loc.root` or, if empty, `server.root`), splits the script into `working_dir` + bare-filename `script_path` (the child `chdir`s into `working_dir`, so `script_path` is relative and the full path is exported via `PATH_TRANSLATED`/`SCRIPT_FILENAME`), copies the request body, and builds the CGI/1.1 env. Beyond the standard CGI/1.1 vars, it exports a non-standard **`UPLOAD_STORE`** (the route's effective `upload_store`, location-over-server, resolved to an **absolute** path against the server CWD because the child `chdir`s away before exec) so upload-listing scripts like `www/cgi-bin/list_uploads.py` find the upload dir regardless of config. Returns `false` (job untouched) when the target isn't a CGI request.
   - `execute(conn, job)` → `bool` — creates two pipes (parent ends set `O_NONBLOCK` + `FD_CLOEXEC`), `fork()`s, `dup2()`s stdin/stdout in the child, `chdir`s to `working_dir`, `execve`s the interpreter. The parent stores `cgi_in_fd`/`cgi_out_fd`/`cgi_pid`/`cgi_start_time` in the `Connection` and moves it to `CGI_WRITING_BODY`. Private helpers `allocateEnv`/`freeEnv` convert the env map to `char**`.
 - `CgiJob` — plain struct holding job parameters: `interpreter`, `script_path`, `working_dir`, `method`, `query_string`, `url_path`, `body` (`std::vector<char>`), `env` map.
 - **Event-loop integration lives in `CgiManager`** (`srcs/server/CgiManager.cpp`, `includes/server/CgiManager.hpp`) — the server-layer class that owns the CGI exchange on top of the single epoll loop (it was formerly spread across `Server`). `CgiHandler` remains the pure fork/exec utility; `CgiManager` is the lifecycle wrapper. It holds a reference back to the `Server` (and is a `friend` of it) so it reuses the Server's single-owner response/error transitions (`_queueResponse` / `_sendError`) instead of duplicating them. Public surface: `dispatch(conn, ctx, match)` — builds the job via `CgiHandler::buildJob`, forks, wires the pipes; returns `false` for a non-CGI target so the caller builds a static response. `onPipeOUT`/`onPipeIN` stream the request body → stdin / drain stdout into `conn->cgi_raw_output`. `teardown` does epoll-safe pipe + child cleanup (must run before the `Connection` is destroyed). `isActive`/`isExpired`/`timeout` implement the 5s-inactivity / 60s-hard cap → 504. Private helpers: `start` (fork + register pipes via `CgiPipeWrapper`), `closeInPipe`/`closePipe`, `finalize` (reap + `buildResponse`, 502 on empty/malformed), `buildResponse` (`Status:` header → status line). `Server` owns a `CgiManager _cgi` member (declared after `_epoll`), forwards `onCgiPipeIN`/`onCgiPipeOUT` to it, and calls `_cgi.dispatch` from `_processRequest`. See the Server/event layer below.

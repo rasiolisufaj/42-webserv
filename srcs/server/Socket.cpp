@@ -44,9 +44,9 @@ void Socket::setup()
   int status;
 
   std::memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;
+  hints.ai_family = AF_UNSPEC; // Allow IPv4 or IPv6
+  hints.ai_socktype = SOCK_STREAM; // TCP
+  hints.ai_flags = AI_PASSIVE; // Causes bind() to autofill the IP
 
   const char *node = NULL;
   if (!this->_host.empty() && this->_host != "0.0.0.0" && this->_host != "*")
@@ -56,6 +56,8 @@ void Socket::setup()
   else
     hints.ai_flags = 0;
 
+  // getaddrinfo() returns a linked list of addrinfo structs; try each until one succeeds
+  // It helps you to convert hostname + port into a sockaddr struct that can be used in bind() and connect()
   if ((status = getaddrinfo(node, this->_port.c_str(), &hints, &res)) != 0)
   {
     throw std::runtime_error("getaddrinfo error: " +
@@ -71,6 +73,7 @@ void Socket::setup()
       last_errno = errno;
       continue;
     }
+    // set different flags on the socket to make it non-blocking and close-on-exec
     int flags = fcntl(this->_fd, F_GETFD, 0);
     if (flags != -1)
     {
@@ -94,6 +97,7 @@ void Socket::setup()
     }
 
     int yes = 1;
+    // Allow reuse of the address (SO_REUSEADDR) to avoid "Address already in use" errors on restart
     if (setsockopt(this->_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) ==
         -1)
     {
@@ -103,6 +107,7 @@ void Socket::setup()
       continue;
     }
 
+    // Bind the socket to the address and port
     if (bind(this->_fd, p->ai_addr, p->ai_addrlen) == -1)
     {
       last_errno = errno;
@@ -119,6 +124,7 @@ void Socket::setup()
     throw std::runtime_error("failed to bind to any address: " +
                              std::string(std::strerror(last_errno)));
 
+  // Start listening for incoming connections
   if (listen(this->_fd, SOMAXCONN) == -1)
     throw std::runtime_error("listen error: " +
                              std::string(std::strerror(errno)));
@@ -184,8 +190,7 @@ void Socket::handle(uint32_t event, IServerCallback &callback)
       client_fd = this->acceptConnection();
       if (client_fd == -1)
       {
-        // accept queue drained (would-block) or a transient error: in either
-        // case stop draining. errno must not be inspected after the syscall.
+        // No more clients to accept (EAGAIN/EWOULDBLOCK)
         break;
       }
       callback.onNewConnection(client_fd, this->_fd);

@@ -10,109 +10,65 @@ class CgiPipeWrapper;
 class RequestContext;
 struct RouteMatch;
 
-/*
- * Owns the CGI exchange lifecycle on top of the single epoll loop. CgiHandler
- * (cgi layer) is the pure fork/exec utility; CgiManager is the event-loop
- * integration that was formerly spread across Server: it forks the child (via
- * CgiHandler), registers the stdin/stdout pipes with epoll, streams the request
- * body to stdin, drains stdout, reaps the child, and turns the collected output
- * into an HTTP response. It reuses the Server's single-owner response/error
- * transitions (_queueResponse / _sendError) rather than duplicating them, so it
- * holds a reference back to the Server (and is a friend of it).
- */
+// Owns the CGI exchange lifecycle on the single epoll loop: forks the child (via
+// CgiHandler, the pure fork/exec utility), wires the stdin/stdout pipes into epoll,
+// streams the body, drains stdout, reaps, and builds the response. Reuses the
+// Server's _queueResponse / _sendError (holds a Server& and is its friend).
 class CgiManager {
     public:
         CgiManager(Server& server, EpollWrapper& epoll);
 
-        /*
-         * If the routed request targets a CGI interpreter, builds the job, forks
-         * the child, and wires up the pipes — returning true (the response is then
-         * produced asynchronously by the pipe callbacks). Returns false when this
-         * is not a CGI request, so the caller builds a static response instead.
-         * Assumes match.server / match.location are non-NULL.
-         */
+        // Builds the job, forks, and wires the pipes if the request targets a CGI
+        // interpreter (reply produced asynchronously by the pipe callbacks); returns
+        // false for a non-CGI target. Assumes match.server / match.location non-NULL.
         bool dispatch(Connection* conn, const RequestContext& ctx,
                       const RouteMatch& match);
 
-        /*
-         * CGI stdout pipe readable: read once into conn->cgi_raw_output. EOF
-         * finalizes the exchange; a read error finalizes as 502.
-         */
+        // CGI stdout readable: read into cgi_raw_output. EOF finalizes; error -> 502.
         void onPipeIN(Connection* conn);
 
-        /*
-         * CGI stdin pipe writable: stream the request body to the child, then
-         * close stdin (child sees EOF) and move to CGI_READING_OUTPUT.
-         */
+        // CGI stdin writable: stream the body, then close stdin (EOF) and move to
+        // CGI_READING_OUTPUT.
         void onPipeOUT(Connection* conn);
 
-        /*
-         * Tears down any CGI state on the connection: removes the pipe fds from
-         * epoll, closes them, kills and reaps the child, and frees the wrappers.
-         * Idempotent / safe when no CGI is active. Must run before the Connection
-         * is destroyed so epoll never references a freed wrapper.
-         */
+        // Tears down all CGI state (pipes out of epoll, child killed+reaped, wrappers
+        // freed). Idempotent. Must run before the Connection is destroyed.
         void teardown(Connection* conn);
 
-        /*
-         * True while the connection is in a CGI state (stdin-writing or
-         * stdout-reading), so the timeout sweep applies CGI caps to it rather than
-         * the ordinary client idle/request timeouts.
-         */
+        // True while the connection is in a CGI state, so the timeout sweep applies
+        // CGI caps instead of the ordinary client timeouts.
         bool isActive(Connection* conn) const;
 
-        /*
-         * True when a live CGI child has either made no I/O progress within the
-         * inactivity window or exceeded the absolute hard cap. False if no child
-         * is running.
-         */
+        // True when a live child made no I/O progress within the inactivity window or
+        // exceeded the hard cap. False if no child is running.
         bool isExpired(Connection* conn, std::time_t now) const;
 
-        /*
-         * Aborts a timed-out CGI exchange: kills/reaps the child, tears down the
-         * pipes, and queues a 504 Gateway Timeout to the client.
-         */
+        // Aborts a timed-out CGI: tears down the child/pipes and queues 504.
         void timeout(Connection* conn);
 
     private:
         Server&        _server;
         EpollWrapper&  _epoll;
 
-        /*
-         * Forks the CGI child (via CgiHandler::execute) for conn->cgi_job, parks
-         * the client socket on EPOLLRDHUP, and registers both pipes with epoll.
-         * On any failure, tears down the partial state and sends 500.
-         */
+        // Forks the child for conn->cgi_job, parks the client socket, and registers
+        // both pipes. On failure, tears down and sends 500.
         void start(Connection* conn);
 
-        /*
-         * Removes the CGI stdin pipe from epoll, closes it, and frees its wrapper
-         * so the child sees EOF on stdin. Idempotent.
-         */
+        // Closes the CGI stdin pipe so the child sees EOF. Idempotent.
         void closeInPipe(Connection* conn);
 
-        /*
-         * Removes one CGI pipe fd from epoll, closes it, frees its wrapper, and
-         * resets both to inactive sentinels (fd = -1, wrapper = NULL). Each step is
-         * guarded so repeated calls are no-ops. `label` names the pipe in the
-         * epoll-removal warning. Shared by closeInPipe and teardown.
-         */
+        // Removes one pipe fd from epoll, closes it, frees its wrapper, and resets
+        // both to inactive sentinels (fd=-1, wrapper=NULL). Guarded for repeat calls;
+        // `label` names the pipe in the epoll-removal warning.
         void closePipe(int& fd, CgiPipeWrapper*& wrapper, const char* label);
 
-        /*
-         * Reaps the child, tears down the pipes, then either turns the collected
-         * output into an HTTP response (queued for sending) or, on read error /
-         * empty / malformed output, sends 502 Bad Gateway.
-         */
+        // Reaps, tears down the pipes, and either queues the built response or, on
+        // read error / empty / malformed output, sends 502.
         void finalize(Connection* conn, bool readError);
 
-        /*
-         * Parses conn->cgi_raw_output into a full HTTP response: maps a CGI
-         * "Status:" header to the status line, passes the remaining headers
-         * through, and appends a computed Content-Length + the Connection header
-         * per conn->keep_alive. Returns "" when the output has no header/body
-         * separator (caller treats that as 502).
-         */
+        // Parses cgi_raw_output into a full HTTP response: "Status:" -> status line,
+        // other headers passed through, our own Content-Length + Connection appended.
+        // Returns "" when there is no header/body separator (caller treats as 502).
         std::string buildResponse(Connection* conn) const;
 
         CgiManager(const CgiManager& other);

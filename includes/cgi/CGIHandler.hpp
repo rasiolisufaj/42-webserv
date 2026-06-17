@@ -8,43 +8,27 @@
 #include <map>
 #include <string>
 
+// Static utility: the pure fork/exec side of CGI (CgiManager drives the event loop).
 class CgiHandler
 {
 private:
-  /*
-   * Utility class: prevent instantiation.
-   */
-  CgiHandler();
+  CgiHandler();  // utility class: no instances
 
-  /*
-   * Converts a C++ env map into a NULL-terminated envp array for execve().
-   * Returns:
-   * - newly allocated envp array
-   */
+  // Converts an env map into a NULL-terminated envp array for execve().
   static char **allocateEnv(const std::map<std::string, std::string> &envMap);
 
-  /*
-   * Frees an envp array created by allocateEnv().
-   */
+  // Frees an envp array created by allocateEnv().
   static void freeEnv(char **envp);
 
 public:
-  /*
-   * Builds a CgiJob from the routed request + matched location.
-   * Resolves the interpreter by the script's file extension (loc.cgi map),
-   * the script path/working dir, the request body, and the CGI/1.1 env.
-   * Returns:
-   * - true  if the target maps to a CGI interpreter (job is populated)
-   * - false if this is not a CGI request (job is left untouched)
-   */
+  // Populates a CgiJob from the routed request + matched location: resolves the
+  // interpreter by file extension (loc.cgi), script path/working dir, body, and
+  // CGI/1.1 env. Returns false (job untouched) for a non-CGI target.
   static bool buildJob(const RequestContext &ctx, const ServerConfig &server,
                        const Location &loc, CgiJob &job);
 
-  /*
-   * Starts a CGI process and wires it to the connection via non-blocking pipes.
-   * Returns:
-   * - true on success, false on failure (HTTP layer should respond 500)
-   */
+  // Forks the CGI child and wires it to the connection via non-blocking pipes.
+  // Returns false on failure (caller responds 500).
   static bool execute(Connection *conn, const CgiJob &job);
 };
 
