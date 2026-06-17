@@ -1,6 +1,15 @@
-*.o.DS_Store
+# Build artifacts
+*.o
+*.d
+obj/
+webserv
+tests/test_main
+
+# OS / editor
 .DS_Store
 .vscode
+
+# Review scratch files
 DEBUG_TOOLKIT.md
 EFFICIENCY_REVIEW.md
 EXEC_SUMMARY.md
