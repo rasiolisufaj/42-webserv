@@ -1,0 +1,38 @@
+	200 ok
+echo -ne "GET / HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+	405 Method not allowed
+echo -ne "DELETE / HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+	501 Method not implemented
+echo -ne "GETLEN / HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+	400 Bad request
+echo -ne "GET / \r\n\r\n" | nc localhost 8080	
+	413 Payload too large
+echo -ne "POST /upload HTTP/1.1\r\nHost: localhost:8080\r\nContent-Length: 999999999\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+	505 HTTP Version Not Supported
+echo -ne "GET / HTTP/2.0\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+	
+BASIC CHECKS	
+	GET
+echo -ne "GET / HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+	POST
+echo -ne "POST /upload_store/hola.txt HTTP/1.1\r\nHost: localhost:8080\r\nContent-Type: text/plain\r\nContent-Length: 12\r\nConnection: close\r\n\r\nEvaluacion42" | nc localhost 8080	
+	Retrieve the file
+echo -ne "GET /upload_store/hola.txt HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+	DELETE
+echo -ne "DELETE /upload_store/hola.txt HTTP/1.1\r\nHost: localhost:8080\r\nContent-Type: text/plain\r\nContent-Length: 12\r\nConnection: close\r\n\r\nEvaluacion42" | nc localhost 8080	
+	UNKNOWN
+echo -ne "GETLEN / HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n" | nc localhost 8080	
+-------------	
+CGI	
+	"curl -i -X POST \
+  -H ""Cookie: session=12345"" \
+  -H ""Content-Type: text/plain"" \
+  -d ""Hola Mundo"" \
+  ""http://localhost:8080/cgi-bin/hello.py?user=juan"""
+	
+	Siege
+siege -b -c 50 -t 20S http://localhost:8080/	
+siege -b -c 50 -t 20S http://localhost:9000	
+	
+	Valgrind
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./webserv config/default.conf	
