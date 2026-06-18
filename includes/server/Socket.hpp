@@ -32,7 +32,7 @@ class Socket : public IEventHandler
         ~Socket();
 
         /*
-            * Resolves the bind address, creates the socket, bind it to the address, makes it non-blocking, and starts listening for incoming connections.
+            * Creates the socket, bind it to the address, makes it non-blocking, and starts listening for incoming connections.
         */
         void setup();
 

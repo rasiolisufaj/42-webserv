@@ -7,15 +7,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/*
- * Builds a CgiJob from a routed request. The interpreter is selected by the
- * script's file extension via loc.cgi; if no extension matches, this is not a
- * CGI request and we return false without touching `job`.
- *
- * The script is run with the child's working directory set to the directory
- * that contains it (see CgiHandler::execute), so script_path is stored as the
- * bare filename while the full filesystem path is exported via PATH_TRANSLATED.
- */
+// Builds a CgiJob from a routed request; returns false (job untouched) when this
+// isn't a CGI target. The child chdir's into the script's directory (see execute),
+// so script_path is the bare filename and the full path goes via PATH_TRANSLATED.
 bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
                           const Location &loc, CgiJob &job)
 {
@@ -26,24 +20,18 @@ bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
   if (dot == std::string::npos)
     return false;
   std::string ext = url_path.substr(dot);
-  // Guard against the last dot living in a directory segment ("/a.b/c").
-  if (ext.find('/') != std::string::npos)
+  if (ext.find('/') != std::string::npos)  // guard against a dot in a dir segment
     return false;
 
   std::map<std::string, std::string>::const_iterator it = loc.cgi.find(ext);
   if (it == loc.cgi.end())
     return false;
 
-  // Effective document root: the location's own root, or the server root if the
-  // location doesn't override it.
   const std::string &root = loc.root.empty() ? server.root : loc.root;
-
-  // Full filesystem path to the script, then split into dir + filename.
   std::string full = root + url_path;
 
-  // The extension maps to an interpreter, but the script must actually exist as
-  // a regular file. If not, this isn't a runnable CGI target: return false so the
-  // static path handles it and emits a 404 (with the configured error page).
+  // The extension maps to an interpreter, but if the script isn't a real file this
+  // isn't a runnable target: return false so the static path emits the 404.
   struct stat st;
   if (stat(full.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
     return false;
@@ -75,11 +63,9 @@ bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
   env["QUERY_STRING"] = ctx.query();
   env["PATH_INFO"] = "";
 
-  // Export the effective upload directory for this route so CGI scripts (e.g.
-  // list_uploads.py) can locate uploads no matter what `upload_store` the config
-  // sets. The location's own upload_store wins, else the server's. The child
-  // chdir's into the script's dir before running, so a relative config path
-  // would be misresolved there -- make it absolute against the server's CWD now.
+  // Export the route's effective upload dir (location over server) so scripts like
+  // list_uploads.py find uploads. The child chdir's away, so make a relative config
+  // path absolute against the server CWD now.
   std::string upload =
       loc.upload_store.empty() ? server.upload_store : loc.upload_store;
   if (!upload.empty() && upload[0] != '/')
@@ -98,10 +84,8 @@ bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
   else
     env["CONTENT_TYPE"] = "";
 
-  // Expose every request header to the CGI as HTTP_<NAME> (CGI/1.1), so the full
-  // request reaches the script (e.g. cookies, host, custom headers). Keys are
-  // stored lowercase; uppercase them and map '-' to '_'. Content-Type and
-  // Content-Length are already exported as their own CGI vars, so skip them.
+  // Expose every request header as HTTP_<NAME> (CGI/1.1): uppercase, '-' -> '_'.
+  // Content-Type/Length are already their own CGI vars, so skip them.
   const std::map<std::string, std::string> &fields = ctx.headers().fields();
   for (std::map<std::string, std::string>::const_iterator it = fields.begin();
        it != fields.end(); ++it)
@@ -122,9 +106,7 @@ bool CgiHandler::buildJob(const RequestContext &ctx, const ServerConfig &server,
   return true;
 }
 
-/*
- * Allocates a NULL-terminated envp array in the "KEY=VALUE" form for execve().
- */
+// Allocates a NULL-terminated "KEY=VALUE" envp array for execve().
 char **
 CgiHandler::allocateEnv(const std::map<std::string, std::string> &envMap)
 {
@@ -142,9 +124,7 @@ CgiHandler::allocateEnv(const std::map<std::string, std::string> &envMap)
   return envp;
 }
 
-/*
- * Frees an envp array created by allocateEnv().
- */
+// Frees an envp array created by allocateEnv().
 void CgiHandler::freeEnv(char **envp)
 {
   if (!envp)
@@ -156,19 +136,14 @@ void CgiHandler::freeEnv(char **envp)
   delete[] envp;
 }
 
-/*
- * Forks and execs a CGI script, wiring stdin/stdout to non-blocking pipes.
- *
- * On success, the created pipe fds and pid are stored in the Connection so the
- * Server can drive the CGI I/O with epoll.
- */
+// Forks and execs the CGI script, wiring stdin/stdout to non-blocking pipes. On
+// success stores the pipe fds + pid in the Connection so the loop can drive CGI I/O.
 bool CgiHandler::execute(Connection *conn, const CgiJob &job)
 {
   int pipe_in[2];
   int pipe_out[2];
 
-  // 1. Pipe Creation. Created separately so a failure on the second pipe doesn't
-  // leak the first pipe's fds.
+  // Created separately so a failure on the second pipe doesn't leak the first.
   if (pipe(pipe_in) < 0)
   {
     Logger::log(Logger::ERROR, "CGI pipe creation failed.");
@@ -182,11 +157,10 @@ bool CgiHandler::execute(Connection *conn, const CgiJob &job)
     return false;
   }
 
-  // 2. Enforce Non-Blocking on the Parent's ends of the pipes
+  // Parent ends: non-blocking, 1 MB buffer (best-effort), and FD_CLOEXEC.
   fcntl(pipe_in[1], F_SETFL, O_NONBLOCK);
   fcntl(pipe_out[0], F_SETFL, O_NONBLOCK);
 
-  // Increase pipe buffer size to 1 MB for throughput (Linux-specific, best-effort)
 #ifdef F_SETPIPE_SZ
   fcntl(pipe_in[1], F_SETPIPE_SZ, 1048576);
   fcntl(pipe_out[0], F_SETPIPE_SZ, 1048576);
@@ -198,7 +172,6 @@ bool CgiHandler::execute(Connection *conn, const CgiJob &job)
   flags = fcntl(pipe_out[0], F_GETFD, 0);
   fcntl(pipe_out[0], F_SETFD, flags | FD_CLOEXEC);
 
-  // 3. Fork
   pid_t pid = fork();
   if (pid < 0)
   {
@@ -212,24 +185,22 @@ bool CgiHandler::execute(Connection *conn, const CgiJob &job)
 
   if (pid == 0)
   {
-    // --- CHILD PROCESS ---
-
-    // Redirect standard streams to pipes
+    // --- CHILD ---
     dup2(pipe_in[0], STDIN_FILENO);
     dup2(pipe_out[1], STDOUT_FILENO);
 
-    // Close all pipe FDs inherited from parent to prevent EOF hangs
+    // Close every inherited pipe fd so the child sees EOF correctly.
     close(pipe_in[0]);
     close(pipe_in[1]);
     close(pipe_out[0]);
     close(pipe_out[1]);
 
-    // Shift to the CGI script's directory for relative file access
+    // chdir into the script's dir so its relative file access works.
     if (chdir(job.working_dir.c_str()) != 0)
     {
       std::exit(1);
     }
-    
+
     char **envp = allocateEnv(job.env);
 
     char *argv[3];
@@ -241,12 +212,9 @@ bool CgiHandler::execute(Connection *conn, const CgiJob &job)
 
     argv[2] = NULL;
 
-    // Execute script
     execve(argv[0], argv, envp);
 
-    // Architectural Fallback: If execve returns, it failed catastrophically.
-    // We MUST free the dynamically allocated memory before exiting to satisfy
-    // leak checkers.
+    // execve only returns on failure; free before exiting to keep leak checkers clean.
     freeEnv(envp);
     delete[] argv[0];
     delete[] argv[1];
@@ -254,19 +222,14 @@ bool CgiHandler::execute(Connection *conn, const CgiJob &job)
   }
   else
   {
-    // --- PARENT PROCESS ---
-
-    // Close the child's ends of the pipes
-    close(pipe_in[0]);
+    // --- PARENT ---
+    close(pipe_in[0]);   // child's ends
     close(pipe_out[1]);
 
-    // Map the OS resources to the Connection state
     conn->cgi_in_fd = pipe_in[1];
     conn->cgi_out_fd = pipe_out[0];
     conn->cgi_pid = pid;
     conn->cgi_start_time = std::time(NULL);
-
-    // Formally transition the state machine
     conn->setState(Connection::CGI_WRITING_BODY);
 
     return true;
