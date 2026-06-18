@@ -278,6 +278,18 @@
             return res;
         });
     }
+    function downloadFile(name) {
+        /* GET /upload_store/<name> serves the stored file (root+path maps to the
+           same dir as upload_store). The `download` attribute forces a real
+           "save as" with the original filename instead of inline navigation. */
+        var url = "/upload_store/" + encodeURIComponent(name);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
     function loadInventory() {
         var body = $("invBody");
         body.innerHTML = '<tr><td colspan="4" class="empty">loading…</td></tr>';
@@ -300,11 +312,17 @@
                     "<td>" + (f.size != null ? fmtBytes(f.size) : (f.size_kb + " KB")) + "</td>" +
                     "<td>" + esc(f.date || "—") + "</td>" +
                     '<td class="actions"></td>';
+                var actions = el(".actions", tr);
+                var dl = document.createElement("button");
+                dl.className = "go";
+                dl.textContent = "⬇ DOWNLOAD";
+                dl.addEventListener("click", function () { downloadFile(f.name); });
+                actions.appendChild(dl);
                 var del = document.createElement("button");
                 del.className = "danger";
                 del.textContent = "✖ DELETE";
                 del.addEventListener("click", function () { deleteFile(f.name, true); });
-                el(".actions", tr).appendChild(del);
+                actions.appendChild(del);
                 body.appendChild(tr);
             });
         });
