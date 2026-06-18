@@ -109,6 +109,35 @@ server {
 - Sizes are in bytes. `client_max_body_size` is inherited from the server unless overridden in a location.
 a- `cgi` maps a file extension to an interpreter; multiple `cgi` lines are allowed per location.
 
+## Status Codes
+
+The server emits the following HTTP status codes (see `reason_phrase()` in `srcs/http/HttpStatus.cpp`):
+
+| Code | Reason | When |
+|------|--------|------|
+| `200` | OK | Successful `GET` / `HEAD` |
+| `201` | Created | Successful `POST` upload |
+| `204` | No Content | Successful `DELETE` |
+| `301` | Moved Permanently | Trailing-slash redirect on a directory / `return` |
+| `302` | Found | `return` redirect |
+| `303` | See Other | `return` redirect |
+| `307` | Temporary Redirect | `return` redirect |
+| `308` | Permanent Redirect | `return` redirect |
+| `400` | Bad Request | Malformed request / no matching server |
+| `403` | Forbidden | Access denied |
+| `404` | Not Found | No matching location / missing file |
+| `405` | Method Not Allowed | Method not in `allow_methods` (with `Allow` header) |
+| `408` | Request Timeout | Client too slow to send the request |
+| `411` | Length Required | Missing `Content-Length` where required |
+| `413` | Payload Too Large | Body exceeds `client_max_body_size` |
+| `414` | URI Too Long | Request target too long |
+| `431` | Request Header Fields Too Large | Headers exceed `client_max_header_size` |
+| `500` | Internal Server Error | Unexpected server failure |
+| `501` | Not Implemented | Unknown HTTP method |
+| `502` | Bad Gateway | Empty / malformed CGI output |
+| `504` | Gateway Timeout | CGI exceeded its time limit |
+| `505` | HTTP Version Not Supported | Unsupported HTTP version |
+
 ## Project Structure
 
 ```
