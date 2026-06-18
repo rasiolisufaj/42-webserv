@@ -1,0 +1,133 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   ConfigMatcher.cpp                                  :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: thodavid <thodavid@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/06/01 11:54:20 by thodavid          #+#    #+#             */
+/*   Updated: 2026/06/07 13:12:21 by thodavid         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "config/ConfigMatcher.hpp"
+#include <stdexcept>
+
+/*
+=> RequestContext vs vector<ServerConfig> (find the server{} block && the location{} block)
+=> RouteMatch { server, location }
+*/
+
+bool ConfigMatcher::serverNameMatch(const RequestContext &ctx,
+                                    const ServerConfig &server) const
+{
+    if (ctx.effectiveHost().name == server.server_name)
+        return (true);
+    else
+        return (false);
+}
+
+bool ConfigMatcher::portMatch(const RequestContext &ctx,
+                              const ServerConfig &server) const
+{
+    if (ctx.localPort() == server.port)
+        return (true);
+    return (false);
+}
+
+bool ConfigMatcher::locationMatch(const std::string &request_path,
+                                  const std::string &location_path) const
+{
+    // most longer location who has a valide  préfix of request_path
+
+    size_t i;
+
+    if (location_path.empty() || request_path.empty())
+        return (false);
+    if (location_path.size() > request_path.size())
+        return (false);
+
+    i = 0;
+    while (i < location_path.size())
+    {
+        if (request_path[i] != location_path[i])
+            return (false);
+        i++;
+    }
+
+    if (location_path == "/")
+        return (true);
+    if (request_path.size() == location_path.size())
+        return (true);
+    if (request_path[location_path.size()] == '/')
+        return (true);
+
+    return (false);
+}
+
+const ServerConfig *ConfigMatcher::findServer(const RequestContext &ctx,
+                                              const std::vector<ServerConfig> &servers) const
+{
+    const ServerConfig *server_candidate;
+    size_t i;
+
+    server_candidate = NULL;
+    i = 0;
+    while (i < servers.size())
+    {
+        if (portMatch(ctx, servers[i]))
+        {
+            if (serverNameMatch(ctx, servers[i]))
+                return (&servers[i]); // match: PORT + SERVERNAME
+
+            if (server_candidate == NULL)
+                server_candidate = &servers[i]; // FALLBACK (first server matching with the port)
+        }
+        i++;
+    }
+
+    if (server_candidate != NULL)
+        return (server_candidate);
+
+    throw(std::runtime_error("500 Internal Server Error: no matching server"));
+}
+
+const Location *ConfigMatcher::findLocation(const RequestContext &ctx,
+                                            const ServerConfig &server) const
+{
+    const Location *best;
+    static const Location default_location; // STATIC!!! Null Object: les defauts du ctor
+    size_t best_len;
+    size_t i;
+
+    best = NULL;
+    best_len = 0;
+    i = 0;
+    while (i < server.locations.size())
+    {
+        if (locationMatch(ctx.path(), server.locations[i].path))
+        {
+            if (server.locations[i].path.size() > best_len)
+            {
+                best = &server.locations[i];
+                best_len = server.locations[i].path.size();
+            }
+        }
+        i++;
+    }
+
+    if (best == NULL)
+        return (&default_location);
+    return (best);
+}
+
+RouteMatch ConfigMatcher::match(const RequestContext &ctx,
+                                const std::vector<ServerConfig> &servers) const
+{
+    RouteMatch match;
+
+    match.server = findServer(ctx, servers);
+    match.location = findLocation(ctx, *match.server);
+
+    return (match);
+}

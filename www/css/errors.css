@@ -1,0 +1,190 @@
+:root {
+    --bg: #0b1220;
+    --panel: #14111a;
+    --panel-head: #1a0e12;
+    --ink: #e5edf5;
+    --muted: #b09ba0;
+    --accent: #06b6d4;
+    --error: #ef4444;
+    --error-bright: #f87171;
+    --warning: #f59e0b;
+    --line: #4a2530;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+* {
+    box-sizing: border-box;
+    border-radius: 0;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.6;
+    background-color: var(--bg);
+    background-image:
+        linear-gradient(rgba(74, 37, 48, 0.35) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(74, 37, 48, 0.35) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+.container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+}
+
+.panel {
+    width: 100%;
+    max-width: 560px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--error);
+    padding: 0;
+    text-align: left;
+}
+
+/* terminal log-tail title bar */
+.panel.alert::before {
+    content: "root@webserv:~# tail -f /var/log/webserv/error.log";
+    display: block;
+    background: var(--panel-head);
+    border-bottom: 1px solid var(--line);
+    color: var(--error-bright);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    padding: 8px 14px;
+}
+
+.panel > h1 {
+    margin: 22px 24px 4px;
+}
+
+.panel > h2 {
+    margin: 0 24px 14px;
+}
+
+.panel > p {
+    margin: 10px 24px;
+}
+
+.panel > hr {
+    margin: 18px 24px;
+}
+
+.panel > button,
+.panel > .btn {
+    margin: 8px 24px 26px;
+}
+
+h1 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--error-bright);
+}
+
+/* blinking alert LED before the status code */
+h1::before {
+    content: "";
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 10px;
+    background: var(--error);
+    box-shadow: 0 0 8px var(--error);
+    vertical-align: middle;
+    animation: blink 1.1s steps(1) infinite;
+}
+
+@keyframes blink {
+    50% { opacity: 0.25; box-shadow: none; }
+}
+
+h2 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--warning);
+}
+
+/* warning marker on the alert subtitle */
+h2::before {
+    content: "\26A0  ";
+}
+
+p {
+    color: var(--muted);
+}
+
+/* log-line prompt prefix */
+p::before {
+    content: "\203A  ";
+    color: var(--error);
+}
+
+hr {
+    border: 0;
+    height: 1px;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--line) 0,
+        var(--line) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+}
+
+button,
+.btn {
+    display: inline-block;
+    padding: 11px 26px;
+    background: transparent;
+    border: 1px solid var(--error);
+    color: var(--error-bright);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.12s linear, color 0.12s linear;
+}
+
+button::before,
+.btn::before {
+    content: "[ ";
+    color: var(--error);
+}
+
+button::after,
+.btn::after {
+    content: " ]";
+    color: var(--error);
+}
+
+button:hover,
+.btn:hover {
+    background: var(--error);
+    color: var(--bg);
+}
+
+button:hover::before,
+button:hover::after,
+.btn:hover::before,
+.btn:hover::after {
+    color: var(--bg);
+}
+
+button:active,
+.btn:active {
+    background: var(--error-bright);
+    border-color: var(--error-bright);
+}
