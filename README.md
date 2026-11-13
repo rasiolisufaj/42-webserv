@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/webserv.svg" width="100%" alt="Animated overview of Webserv: browser, curl and nc clients send requests into a single epoll_wait() loop that dispatches them to static files, CGI (fork, execve, pipes) and uploads, with 200/201 responses flowing back; below, a terminal starts ./webserv and curl gets 200 OK, 405 Method Not Allowed, 201 Created, a Perl CGI reply and a 504 Gateway Timeout from an infinite-loop CGI script.">
+</p>
+
 # Webserv
 
 A non-blocking **HTTP/1.1 web server** written in **C++98**, built for the 42 School curriculum.
